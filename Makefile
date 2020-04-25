@@ -142,3 +142,8 @@ help:
 		printf "\n"; \
 	}' \
 	| more $(shell test $(shell uname) = Darwin && echo '--no-init --raw-control-chars')
+
+
+NOTEBOOK_PORT=10608
+notebook:
+	pipenv run jupyter notebook --allow-root --ip=0.0.0.0 --port=$(NOTEBOOK_PORT)
