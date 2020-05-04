@@ -80,9 +80,15 @@ class TEPCNNDataset(Dataset):
         else:
             idx_offset = 0
 
-        shot = self.df.iloc[int(idx - self.window_size + idx_offset):int(idx + idx_offset), 3:].to_numpy()
+        if idx != self.window_size:
+            idx_offset += 1
+        shot = self.df.iloc[int(idx - self.window_size + idx_offset):int(idx + idx_offset), :]
 
-        label = self.labels.loc[idx+idx_offset, "label"]
+        assert shot.iloc[-1]["sample"] >= self.window_size, "Brah, that's incorrect!"
+
+        shot = shot.iloc[:, 3:].to_numpy()
+
+        label = self.labels.loc[int(idx - idx_offset - 1), "label"]
         label = np.expand_dims(label, axis=[0, 1])
         sample = {'shot': shot, 'label': label}
 
@@ -103,7 +109,6 @@ class Net(nn.Module):
         self.fc3 = nn.Linear(84, 2)
 
     def forward(self, x):
-        # x = x.unsqueeze(1)
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = x.view(-1, 16 * 40)
