@@ -6,15 +6,20 @@ verify_ssl = true
 [dev-packages]
 
 [packages]
-pandas = "*"
+opencv-python = "*"
 numpy = "*"
+click = "*"
+dlib = "*"
+pillow = "*"
 matplotlib = "*"
-seaborn = "*"
-tqdm = "*"
-jupyter = "*"
-pyreadr = "*"
-keras = "==2.1.5"
-tensorflow = {file = "https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.8.0-py3-none-any.whl"}
+python-dotenv = "*"
+scikit-learn = "*"
+scipy = "*"
+torch = "*"
+torchvision = "*"
+pandas = "*"
+scikit-image = "*"
+memory-profiler = "*"
 
 [requires]
-python_version = "3.6"
+python_version = "3.7"
