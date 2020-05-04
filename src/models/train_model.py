@@ -37,13 +37,19 @@ class TEPCNNDataset(Dataset):
             self,
             tep_file,
             window_size=10,
-            is_test=False
+            is_test=False,
+            transform=None
     ):
         self.tep_file = tep_file
         self.window_size = window_size
         self.is_test = is_test
+        self.transform = transform
 
         self.df = pd.read_pickle(tep_file)
+        # cause the dataset has the broken index
+        self.df = self.df\
+            .sort_values(by=["faultNumber", "simulationRun", "sample"], ascending=True)\
+            .reset_index(drop=True)
 
         self.runs_count = self.df.faultNumber.unique().shape[0] * self.df.simulationRun.unique().shape[0]
         self.sample_count = 960 if is_test else 500
@@ -64,14 +70,24 @@ class TEPCNNDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
+        if idx - self.window_size < 0:
+            idx = self.window_size
+
         shot_sample = self.df.iloc[idx, :]["sample"]
+
         if shot_sample < self.window_size:
             idx_offset = self.window_size - shot_sample
         else:
             idx_offset = 0
-        shot = self.df.iloc[idx+idx_offset-self.window_size:idx+idx_offset, 3:].to_numpy()
+
+        shot = self.df.iloc[int(idx - self.window_size + idx_offset):int(idx + idx_offset), 3:].to_numpy()
+
         label = self.labels.loc[idx+idx_offset, "label"]
+        label = np.expand_dims(label, axis=[0, 1])
         sample = {'shot': shot, 'label': label}
+
+        if self.transform:
+            sample = self.transform(sample)
 
         return sample
 
@@ -79,17 +95,18 @@ class TEPCNNDataset(Dataset):
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.conv1 = nn.Conv2d(1, 6, 5)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 19 * 19, 120)
+        self.fc1 = nn.Linear(16 * 40, 120)
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, 2)
 
     def forward(self, x):
+        # x = x.unsqueeze(1)
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
-        x = x.view(-1, 16 * 19 * 19)
+        x = x.view(-1, 16 * 40)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
@@ -111,9 +128,9 @@ class Resize(object):
 
 class ToTensor(object):
     def __call__(self, sample):
-        image, label = sample['image'], sample['label']
+        shot, label = sample['shot'], sample['label']
 
-        return {'image': to_tensor(image),
+        return {'shot': to_tensor(shot).type(torch.FloatTensor),
                 'label': to_tensor(label).reshape(-1)}
 
 
@@ -146,7 +163,7 @@ def main(debug):
     logger.addHandler(fileHandler)
     logger.addHandler(streamHandler)
     logger.propagate = False
-    window_size = 52
+    window_size = 30
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logger.info(f'Training begin on {device}')
@@ -156,15 +173,15 @@ def main(debug):
         loader_jobs = 0
 
     transform = transforms.Compose([
-        Resize(size=(88, 88)),
         ToTensor(),
-        Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        # Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
 
     trainset = TEPCNNDataset(
         tep_file="data/raw/sampled_TEP/sampled_train.pkl",
         window_size=window_size,
-        is_test=False
+        is_test=False,
+        transform=transform
     )
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=2, shuffle=True, num_workers=loader_jobs,
                                               drop_last=True)
@@ -173,6 +190,7 @@ def main(debug):
         tep_file="data/raw/sampled_TEP/sampled_test.pkl",
         window_size=window_size,
         is_test=True,
+        transform=transform
     )
     testloader = torch.utils.data.DataLoader(testset, batch_size=2, shuffle=False, num_workers=loader_jobs,
                                              drop_last=False)
