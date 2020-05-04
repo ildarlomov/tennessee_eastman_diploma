@@ -67,6 +67,12 @@ class TEPCNNDataset(Dataset):
         return len(self.df)
 
     def __getitem__(self, idx):
+        """
+        This samples a "shot" from a single simulation run.
+        A shot is a sequence of samples from 52 sensors of len self.window_size.
+        The target variable is the value of the "faultNumber" of last item in a "shot" sequence.
+        """
+
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
