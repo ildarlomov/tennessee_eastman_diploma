@@ -64,7 +64,6 @@ def get_latest_model_id(dir_name):
 
 
 class TEPCNNDataset(Dataset):
-
     def __init__(
             self,
             tep_file_fault_free,
@@ -91,6 +90,8 @@ class TEPCNNDataset(Dataset):
         self.df = self.df \
             .sort_values(by=["faultNumber", "simulationRun", "sample"], ascending=True) \
             .reset_index(drop=True)
+
+        self.class_count = len(self.df.faultNumber.value_counts())
 
         self.runs_count = self.df.faultNumber.unique().shape[0] * self.df.simulationRun.unique().shape[0]
         self.sample_count = 960 if is_test else 500
@@ -148,14 +149,14 @@ class TEPCNNDataset(Dataset):
 
 
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, class_count):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(1, 6, 5)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(6, 16, 5)
         self.fc1 = nn.Linear(16 * 40, 120)
         self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 2)
+        self.fc3 = nn.Linear(84, class_count)
 
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
@@ -263,7 +264,7 @@ def main(cuda, debug):
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=loader_jobs,
                                              drop_last=False)
 
-    net = Net().to(device)
+    net = Net(class_count=trainset.class_count).to(device)
     logger.info("\n" + str(net))
 
     criterion = nn.CrossEntropyLoss()
