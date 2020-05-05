@@ -148,21 +148,13 @@ NOTEBOOK_PORT=10608
 notebook:
 	pipenv run jupyter notebook --allow-root --ip=0.0.0.0 --port=$(NOTEBOOK_PORT)
 
-
-crop_faces:
-	pipenv run python src/data/det_and_faces_from_dir.py data/raw/for_scoring data/processed/faces_train_ready
-
-prun_train:
-	git pull
-	pipenv run pip install .
-	pipenv run python src/models/train_model.py data/raw/MeGlass_120x120_meta/meta.txt data/raw/MeGlass_120x120
-
 install_torch_cuda:
 	pipenv install
 	pipenv uninstall torch torchvision
 	pipenv run pip install torch==1.4.0+cu92 torchvision==0.5.0+cu92 -f https://download.pytorch.org/whl/torch_stable.html
 
-prun_predict:
+prun_train:
 	git pull
 	pipenv run pip install .
-	pipenv run python src/models/predict_model.py data/raw/example_data_glasses/with_glasses models/1
+	pipenv run python src/models/train_model.py --cuda 2
+

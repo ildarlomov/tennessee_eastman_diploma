@@ -20,6 +20,7 @@ torchvision = "*"
 pandas = "*"
 scikit-image = "*"
 memory-profiler = "*"
+pyreadr = "*"
 
 [requires]
 python_version = "3.7"
