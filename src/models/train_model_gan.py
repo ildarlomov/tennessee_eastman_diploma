@@ -322,6 +322,7 @@ def main(cuda, debug):
             inputs, labels = data["shot"], data["label"]
             inputs, labels = inputs.to(device), labels.to(device)
             state_h, state_c = net.zero_state(batch_size)
+            state_h, state_c = state_h.to(device), state_c.to(device)
 
             inputs = inputs.squeeze(dim=1)
             labels = labels.squeeze()
@@ -354,6 +355,7 @@ def main(cuda, debug):
                 inputs, labels = data["shot"], data["label"]
                 inputs, labels = inputs.to(device), labels.to(device)
                 state_h, state_c = net.zero_state(batch_size)
+                state_h, state_c = state_h.to(device), state_c.to(device)
                 inputs = inputs.squeeze(dim=1)
                 labels = labels.squeeze()
                 # logits[:, -1, :] this is due to we account only the latest output from LSTM dense layer.
