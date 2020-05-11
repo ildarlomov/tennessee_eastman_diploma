@@ -161,5 +161,5 @@ prun_train:
 prun_train_gan:
 	git pull
 	pipenv run pip install .
-	pipenv run python src/models/train_model.py --cuda 2
+	pipenv run python src/models/train_model_gan.py --cuda 2
 
