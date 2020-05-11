@@ -16,6 +16,7 @@ import sys
 from PIL import Image
 from typing import Iterable
 import pyreadr as py
+from argparse import Namespace
 
 RANDOM_SEED = 42
 
@@ -63,7 +64,7 @@ def get_latest_model_id(dir_name):
     return max(model_ids) if len(model_ids) else 0
 
 
-class TEPCNNDataset(Dataset):
+class TEPRNNGANDataset(Dataset):
     def __init__(
             self,
             tep_file_fault_free,
@@ -105,6 +106,8 @@ class TEPCNNDataset(Dataset):
         else:
             self.labels.loc[(self.labels["label"] != 0) & (self.labels["sample"] <= 20), "label"] = 0
 
+        self.features_count = self.df.shape[1] - 3
+
     def __len__(self):
         return len(self.df)
 
@@ -138,8 +141,8 @@ class TEPCNNDataset(Dataset):
 
         shot = shot.iloc[:, 3:].to_numpy()
 
-        label = self.labels.loc[int(idx - idx_offset - 1), "label"]
-        label = np.expand_dims(label, axis=[0, 1])
+        label = self.labels.iloc[int(idx - self.window_size + idx_offset):int(idx + idx_offset), :]["label"].to_numpy()
+        label = np.expand_dims(label, axis=[1])
         sample = {'shot': shot, 'label': label}
 
         if self.transform:
@@ -149,8 +152,6 @@ class TEPCNNDataset(Dataset):
 
 
 class Net(nn.Module):
-    """CNN for TEP dataset"""
-
     def __init__(self, class_count):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(1, 6, 5)
@@ -170,12 +171,33 @@ class Net(nn.Module):
         return x
 
 
+class TEPRNN(nn.Module):
+
+    def __init__(self, seq_size, features_count, class_count, lstm_size):
+        super(TEPRNN, self).__init__()
+        self.seq_size = seq_size
+        self.lstm_size = lstm_size
+        self.lstm = nn.LSTM(features_count,
+                            lstm_size,
+                            batch_first=True)
+        self.dense = nn.Linear(lstm_size, class_count)
+
+    def zero_state(self, batch_size):
+        return (torch.zeros(1, batch_size, self.lstm_size),
+                torch.zeros(1, batch_size, self.lstm_size))
+
+    def forward(self, x, prev_state):
+        output, state = self.lstm(x, prev_state)
+        logits = self.dense(output)
+        return logits, state
+
+
 class ToTensor(object):
     def __call__(self, sample):
         shot, label = sample['shot'], sample['label']
 
         return {'shot': to_tensor(shot).type(torch.FloatTensor),
-                'label': to_tensor(label).reshape(-1)}
+                'label': to_tensor(label)}
 
 
 class Normalize(object):
@@ -194,6 +216,14 @@ class Normalize(object):
 @click.option('--cuda', required=True, type=int, default=7)
 @click.option('-d', '--debug', 'debug', is_flag=True)
 def main(cuda, debug):
+    """
+    План такой:
+    Сначала мы просто делаем lstm и учимся с каждого шага по батчу
+    доставать хиден стейт и делать предсказание на освновании него и
+    считать некоторый лосс от ответа на каждом шаге.
+
+    потом см тудуист
+    """
     logFormatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     logging.basicConfig(level=logging.INFO)
     temp_model_dir = TemporaryDirectory(dir="models")
@@ -211,6 +241,21 @@ def main(cuda, debug):
 
     device = torch.device(f"cuda:{cuda}" if torch.cuda.is_available() else "cpu")
     logger.info(f'Training begin on {device}')
+
+    # todo: add this nice syntax
+    flags = Namespace(
+        train_file='oliver.txt',
+        seq_size=32,
+        batch_size=16,
+        embedding_size=64,
+        lstm_size=64,
+        gradients_norm=5,
+        initial_words=['I', 'am'],
+        predict_top_k=5,
+        checkpoint_path='checkpoint',
+    )
+
+    lstm_size = 64
     loader_jobs = 8
     epochs = 20
     window_size = 30
@@ -233,7 +278,7 @@ def main(cuda, debug):
         Normalize()
     ])
 
-    trainset = TEPCNNDataset(
+    trainset = TEPRNNGANDataset(
         tep_file_fault_free=tep_file_fault_free_train,
         tep_file_faulty=tep_file_faulty_train,
         window_size=window_size,
@@ -243,7 +288,7 @@ def main(cuda, debug):
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=loader_jobs,
                                               drop_last=True)
 
-    testset = TEPCNNDataset(
+    testset = TEPRNNGANDataset(
         tep_file_fault_free=tep_file_fault_free_test,
         tep_file_faulty=tep_file_faulty_test,
         window_size=window_size,
@@ -253,7 +298,12 @@ def main(cuda, debug):
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=loader_jobs,
                                              drop_last=False)
 
-    net = Net(class_count=trainset.class_count).to(device)
+    net = TEPRNN(
+        class_count=trainset.class_count,
+        lstm_size=lstm_size,
+        seq_size=window_size,
+        features_count=trainset.features_count
+    ).to(device)
     logger.info("\n" + str(net))
 
     criterion = nn.CrossEntropyLoss()
@@ -264,14 +314,21 @@ def main(cuda, debug):
     max_accuracy = 0
     for epoch in range(epochs):
 
+        logger.info('Epoch %d training...' % epoch)
         running_loss = 0.0
         loss_size = 0
+        net.train()
         for i, data in enumerate(trainloader, 0):
             inputs, labels = data["shot"], data["label"]
             inputs, labels = inputs.to(device), labels.to(device)
+            state_h, state_c = net.zero_state(batch_size)
+
+            inputs = inputs.squeeze(dim=1)
+            labels = labels.squeeze()
+
             optimizer.zero_grad()
-            outputs = net(inputs)
-            loss = criterion(outputs, torch.squeeze(labels))
+            logits, (state_h, state_c) = net(inputs, (state_h, state_c))
+            loss = criterion(logits.transpose(1, 2), labels)
             loss.backward()
             optimizer.step()
 
@@ -286,17 +343,24 @@ def main(cuda, debug):
             if debug and i > 100:
                 break
 
+        logger.info('Epoch %d evaluation...' % epoch)
+        # correct = epoch
+        # total = 100
         correct = 0
         total = 0
+        net.eval()
         with torch.no_grad():
             for data in testloader:
                 inputs, labels = data["shot"], data["label"]
                 inputs, labels = inputs.to(device), labels.to(device)
-                labels = torch.squeeze(labels)
-                outputs = net(inputs)
-                _, predicted = torch.max(outputs.data, 1)
+                state_h, state_c = net.zero_state(batch_size)
+                inputs = inputs.squeeze(dim=1)
+                labels = labels.squeeze()
+                # logits[:, -1, :] this is due to we account only the latest output from LSTM dense layer.
+                logits, (state_h, state_c) = net(inputs, (state_h, state_c))
+                _, predicted = torch.max(logits[:, -1, :].data, 1)
                 total += labels.size(0)
-                correct += (predicted == labels).sum().item()
+                correct += (predicted == labels[:, -1]).sum().item()
                 if debug:
                     break
         acc = 100. * correct / total
