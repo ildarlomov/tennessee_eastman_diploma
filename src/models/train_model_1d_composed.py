@@ -146,22 +146,33 @@ class TEPCNNDataset(Dataset):
         return sample
 
 
-class Net(nn.Module):
-    """CNN for TEP dataset"""
+class CNN1D2D(nn.Module):
+    """
+    CNN for TEP dataset.
+    It combines stacked 1d and 2d convolution layers in order to capture the delays in sensor data.
+    """
 
     def __init__(self, class_count):
-        super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 6, 5)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 40, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, class_count)
+        super(CNN1D2D, self).__init__()
+        # todo: experimenting with groups parameter is an interesting thing
+        self.conv1 = nn.Conv1d(in_channels=52, out_channels=52*2, kernel_size=5, groups=52)
+        self.pool1 = nn.MaxPool1d(2, 2)
+        self.conv2 = nn.Conv1d(in_channels=52*2, out_channels=52*2*2, kernel_size=5, groups=52*2)
+        self.pool2 = nn.MaxPool1d(2, 2)
+        self.conv3 = nn.Conv2d(1, 6, 3)
+        self.pool3 = nn.MaxPool2d(2, 2)
+        self.fc1 = nn.Linear(6 * 103, 64)
+        self.fc2 = nn.Linear(64, 32)
+        self.fc3 = nn.Linear(32, class_count)
 
     def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = x.view(-1, 16 * 40)
+        x = x.squeeze()
+        x = x.transpose(1, 2)
+        x = self.pool1(F.relu(self.conv1(x)))
+        x = self.pool2(F.relu(self.conv2(x)))
+        x = x.view(-1, 1, 52*2*2, 4)
+        x = self.pool3(F.relu(self.conv3(x)))
+        x = x.view(-1, 6*103)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
@@ -251,7 +262,7 @@ def main(cuda, debug):
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=loader_jobs,
                                              drop_last=False)
 
-    net = Net(class_count=trainset.class_count).to(device)
+    net = CNN1D2D(class_count=trainset.class_count).to(device)
     logger.info("\n" + str(net))
 
     criterion = nn.CrossEntropyLoss()
