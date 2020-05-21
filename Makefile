@@ -169,3 +169,8 @@ prun_train_1d_composed:
 	pipenv run pip install .
 	pipenv run python src/models/train_model_1d_composed.py --cuda 2
 
+prun_train_gan_v3:
+	git pull
+	pipenv run pip install .
+	pipenv run python src/models/train_model_1d_composed.py --cuda 2 --dataset_path data/raw/sampled_TEP/sampled_train.pkl --delta_condition --gen_type lstm --dis_type cnn --alternate --run_tag cnn_generation_gan_v3
+

@@ -27,7 +27,7 @@ parser.add_argument('--batchSize', type=int, default=16, help='input batch size'
 parser.add_argument('--nz', type=int, default=100, help='dimensionality of the latent vector z')
 parser.add_argument('--epochs', type=int, default=50, help='number of epochs to train for')
 parser.add_argument('--lr', type=float, default=0.0002, help='learning rate, default=0.0002')
-parser.add_argument('--cuda', action='store_true', help='enables cuda')
+parser.add_argument('--cuda', type=int, default=2, help='number of epochs to train for')
 parser.add_argument('--netG', default='', help="path to netG (to continue training)")
 parser.add_argument('--netD', default='', help="path to netD (to continue training)")
 parser.add_argument('--outf', default='checkpoints', help='folder to save checkpoints')
@@ -81,9 +81,7 @@ random.seed(opt.manualSeed)
 torch.manual_seed(opt.manualSeed)
 
 cudnn.benchmark = True
-
-if torch.cuda.is_available() and not opt.cuda:
-    print("You have a cuda device, so you might want to run with --cuda as option")
+device = torch.device(f"cuda:{opt.cuda}" if torch.cuda.is_available() else "cpu")
 
 if opt.dataset == "btp":
     # dataset = BtpDataset(opt.dataset_path)
@@ -92,7 +90,6 @@ assert dataset
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batchSize,
                                          shuffle=True, num_workers=int(opt.workers))
 
-device = torch.device("cuda:0" if opt.cuda else "cpu")
 nz = int(opt.nz)
 #Retrieve the sequence length as first dimension of a sequence in the dataset
 seq_len = dataset[0].size(0)
