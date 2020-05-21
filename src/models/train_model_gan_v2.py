@@ -18,7 +18,10 @@ from typing import Iterable
 import pyreadr as py
 from argparse import Namespace
 
-"""This is a working LSTM model script."""
+"""
+This is a copy of train_model_gan.py, but used for future real GAN development.
+A bit overwritten by train_model_gan_v3.py.
+"""
 
 RANDOM_SEED = 42
 
