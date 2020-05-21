@@ -24,8 +24,8 @@ class LSTMGenerator(nn.Module):
         self.linear = nn.Sequential(nn.Linear(hidden_dim, out_dim), nn.Tanh())
 
     def zero_state(self, batch_size):
-        return (torch.zeros(self.n_layers, batch_size, self.lstm_size),
-                torch.zeros(self.n_layers, batch_size, self.lstm_size))
+        return (torch.zeros(self.n_layers, batch_size, self.hidden_dim),
+                torch.zeros(self.n_layers, batch_size, self.hidden_dim))
 
     def forward(self, input, prev_state):
         batch_size, seq_len = input.size(0), input.size(1)
