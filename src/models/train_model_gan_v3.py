@@ -235,7 +235,7 @@ for epoch in range(opt.epochs):
             break
         
     ##### End of the epoch #####
-    real_plot = time_series_to_plot(dataset.denormalize(real_display))
+    real_plot = time_series_to_plot(dataset.denormalize(real_display).cpu())
     if (epoch % opt.tensorboard_image_every == 0) or (epoch == (opt.epochs - 1)):
         writer.add_image("Real", real_plot, epoch)
 
@@ -243,7 +243,7 @@ for epoch in range(opt.epochs):
     state_h, state_c = state_h.to(device), state_c.to(device)
     fake = netG(fixed_noise, (state_h, state_c))
 
-    fake_plot = time_series_to_plot(dataset.denormalize(fake))
+    fake_plot = time_series_to_plot(dataset.denormalize(fake).cpu())
     fp = os.path.join(opt.imf, opt.run_tag+'_epoch'+str(epoch)+'.jpg')
     # torchvision.utils.save_image(fake_plot, fp)
 
