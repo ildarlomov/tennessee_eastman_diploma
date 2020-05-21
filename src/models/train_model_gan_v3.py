@@ -23,7 +23,7 @@ parser.add_argument('--dataset', default="btp", help='dataset to use (only btp f
 parser.add_argument('--dataset_path', required=True, help='path to dataset')
 parser.add_argument('--debug', help='if run in debug mode', action='store_true')
 parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
-parser.add_argument('--batchSize', type=int, default=16, help='input batch size')
+parser.add_argument('--batch_size', type=int, default=16, help='input batch size')
 parser.add_argument('--nz', type=int, default=100, help='dimensionality of the latent vector z')
 parser.add_argument('--epochs', type=int, default=50, help='number of epochs to train for')
 parser.add_argument('--lr', type=float, default=0.0002, help='learning rate, default=0.0002')
@@ -87,7 +87,7 @@ if opt.dataset == "btp":
     # dataset = BtpDataset(opt.dataset_path)
     dataset = TEPDataset(tep_file_fault_free_train, tep_file_faulty_train)
 assert dataset
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batchSize,
+dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size,
                                          shuffle=True, num_workers=int(opt.workers))
 
 nz = int(opt.nz)
@@ -120,11 +120,11 @@ criterion = nn.BCELoss().to(device)
 delta_criterion = nn.MSELoss().to(device)
 
 #Generate fixed noise to be used for visualization
-fixed_noise = torch.randn(opt.batchSize, seq_len, nz, device=device)
+fixed_noise = torch.randn(opt.batch_size, seq_len, nz, device=device)
 
 if opt.delta_condition:
     #Sample both deltas and noise for visualization
-    deltas = dataset.sample_deltas(opt.batchSize).unsqueeze(2).repeat(1, seq_len, 1).to(device)
+    deltas = dataset.sample_deltas(opt.batch_size).unsqueeze(2).repeat(1, seq_len, 1).to(device)
     fixed_noise = torch.cat((fixed_noise, deltas), dim=2).to(device)
 
 real_label = 1
@@ -163,7 +163,11 @@ for epoch in range(opt.epochs):
             #Sample a delta for each batch and concatenate to the noise for each timestep
             deltas = dataset.sample_deltas(batch_size).unsqueeze(2).repeat(1, seq_len, 1).to(device)
             noise = torch.cat((noise, deltas), dim=2).to(device)
-        fake = netG(noise)
+
+        state_h, state_c = netG.zero_state(batch_size)
+        state_h, state_c = state_h.to(device), state_c.to(device)
+
+        fake = netG(noise, (state_h, state_c))
         label.fill_(fake_label)
         output = netD(fake.detach())
         errD_fake = criterion(output, label)
@@ -196,7 +200,11 @@ for epoch in range(opt.epochs):
             deltas = dataset.sample_deltas(batch_size).unsqueeze(2).repeat(1, seq_len, 1)
             noise = torch.cat((noise, deltas), dim=2)
             #Generate sequence given noise w/ deltas and deltas
-            out_seqs = netG(noise)
+            state_h, state_c = netG.zero_state(batch_size)
+            state_h, state_c = state_h.to(device), state_c.to(device)
+
+            out_seqs = netG(noise, (state_h, state_c))
+
             delta_loss = opt.delta_lambda * delta_criterion(out_seqs[:, -1] - out_seqs[:, 0], deltas[:,0])
             delta_loss.backward()
         
@@ -230,8 +238,11 @@ for epoch in range(opt.epochs):
     real_plot = time_series_to_plot(dataset.denormalize(real_display))
     if (epoch % opt.tensorboard_image_every == 0) or (epoch == (opt.epochs - 1)):
         writer.add_image("Real", real_plot, epoch)
-    
-    fake = netG(fixed_noise)
+
+    state_h, state_c = netG.zero_state(opt.batch_size)
+    state_h, state_c = state_h.to(device), state_c.to(device)
+    fake = netG(fixed_noise, (state_h, state_c))
+
     fake_plot = time_series_to_plot(dataset.denormalize(fake))
     fp = os.path.join(opt.imf, opt.run_tag+'_epoch'+str(epoch)+'.jpg')
     # torchvision.utils.save_image(fake_plot, fp)
