@@ -57,7 +57,7 @@ if opt.debug:
     tep_file_fault_free_test = "data/raw/sampled_TEP/sampled_test.pkl"
     tep_file_faulty_test = "data/raw/sampled_TEP/sampled_test.pkl"
 
-#Create writer for tensorboard
+# Create writer for tensorboard
 date = datetime.datetime.now().strftime("%d-%m-%y_%H:%M")
 run_name = f"{opt.run_tag}_{date}" if opt.run_tag != '' else date
 log_dir_name = os.path.join(opt.logdir, run_name)
@@ -91,18 +91,20 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size,
                                          shuffle=True, num_workers=int(opt.workers))
 
 nz = int(opt.nz)
-#Retrieve the sequence length as first dimension of a sequence in the dataset
+# Retrieve the sequence length as first dimension of a sequence in the dataset
 seq_len = dataset[0].size(0)
-#An additional input is needed for the delta
+# An additional input is needed for the delta
 in_dim = opt.nz + 1 if opt.delta_condition else opt.nz
 
-if opt.dis_type == "lstm": 
+if opt.dis_type == "lstm":
+    # todo: this option is not working
     netD = LSTMDiscriminator(in_dim=1, hidden_dim=256).to(device)
 if opt.dis_type == "cnn":
     netD = CausalConvDiscriminator(input_size=1, n_layers=8, n_channel=10, kernel_size=8, dropout=0).to(device)
 if opt.gen_type == "lstm":
     netG = LSTMGenerator(in_dim=in_dim, out_dim=1, hidden_dim=256).to(device)
 if opt.gen_type == "cnn":
+    # todo: this option is not working
     netG = CausalConvGenerator(noise_size=in_dim, output_size=1, n_layers=8, n_channel=10, kernel_size=8, dropout=0.2).to(device)
     
 assert netG
@@ -119,11 +121,11 @@ print("|Generator Architecture|\n", netG)
 criterion = nn.BCELoss().to(device)
 delta_criterion = nn.MSELoss().to(device)
 
-#Generate fixed noise to be used for visualization
+# Generate fixed noise to be used for visualization
 fixed_noise = torch.randn(opt.batch_size, seq_len, nz, device=device)
 
 if opt.delta_condition:
-    #Sample both deltas and noise for visualization
+    # Sample both deltas and noise for visualization
     deltas = dataset.sample_deltas(opt.batch_size).unsqueeze(2).repeat(1, seq_len, 1).to(device)
     fixed_noise = torch.cat((fixed_noise, deltas), dim=2).to(device)
 
@@ -138,7 +140,7 @@ for epoch in range(opt.epochs):
     for i, data in enumerate(dataloader, 0):
         niter = epoch * len(dataloader) + i
         
-        #Save just first batch of real data for displaying
+        # Save just first batch of real data for displaying
         if i == 0:
             real_display = data.cpu()
       
@@ -146,7 +148,7 @@ for epoch in range(opt.epochs):
         # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
         ###########################
 
-        #Train with real data
+        # Train with real data
         netD.zero_grad()
         real = data.to(device)
         batch_size, seq_len = real.size(0), real.size(1)
@@ -157,10 +159,10 @@ for epoch in range(opt.epochs):
         errD_real.backward()
         D_x = output.mean().item()
         
-        #Train with fake data
+        # Train with fake data
         noise = torch.randn(batch_size, seq_len, nz, device=device)
         if opt.delta_condition:
-            #Sample a delta for each batch and concatenate to the noise for each timestep
+            # Sample a delta for each batch and concatenate to the noise for each timestamp
             deltas = dataset.sample_deltas(batch_size).unsqueeze(2).repeat(1, seq_len, 1).to(device)
             noise = torch.cat((noise, deltas), dim=2).to(device)
 
@@ -176,7 +178,7 @@ for epoch in range(opt.epochs):
         errD = errD_real + errD_fake
         optimizerD.step()
         
-        #Visualize discriminator gradients
+        # Visualize discriminator gradients
         for name, param in netD.named_parameters():
             writer.add_histogram("DiscriminatorGradients/{}".format(name), param.grad, niter)
 
@@ -189,28 +191,27 @@ for epoch in range(opt.epochs):
         errG = criterion(output, label)
         errG.backward()
         D_G_z2 = output.mean().item()
-        
 
         if opt.delta_condition:
-            #If option is passed, alternate between the losses instead of using their sum
+            # If option is passed, alternate between the losses instead of using their sum
             if opt.alternate:
                 optimizerG.step()
                 netG.zero_grad()
             noise = torch.randn(batch_size, seq_len, nz, device=device)
             deltas = dataset.sample_deltas(batch_size).unsqueeze(2).repeat(1, seq_len, 1).to(device)
             noise = torch.cat((noise, deltas), dim=2).to(device)
-            #Generate sequence given noise w/ deltas and deltas
+
+            # Generate sequence given noise w/ deltas and deltas
             state_h, state_c = netG.zero_state(batch_size)
             state_h, state_c = state_h.to(device), state_c.to(device)
 
             out_seqs = netG(noise, (state_h, state_c))
-
-            delta_loss = opt.delta_lambda * delta_criterion(out_seqs[:, -1] - out_seqs[:, 0], deltas[:,0])
+            delta_loss = opt.delta_lambda * delta_criterion(out_seqs[:, -1] - out_seqs[:, 0], deltas[:, 0])
             delta_loss.backward()
         
         optimizerG.step()
         
-        #Visualize generator gradients
+        # Visualize generator gradients
         for name, param in netG.named_parameters():
             writer.add_histogram("GeneratorGradients/{}".format(name), param.grad, niter)
         
@@ -218,7 +219,7 @@ for epoch in range(opt.epochs):
         # (3) Supervised update of G network: minimize mse of input deltas and actual deltas of generated sequences
         ###########################
 
-        #Report metrics
+        # Report metrics
         print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f' 
               % (epoch, opt.epochs, i, len(dataloader),
                  errD.item(), errG.item(), D_x, D_G_z1, D_G_z2), end='')

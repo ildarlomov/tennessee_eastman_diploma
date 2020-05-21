@@ -2,7 +2,13 @@ import torch
 import torch.nn as nn
 from torch.nn.utils import weight_norm
 
+
 class Chomp1d(nn.Module):
+    """
+    What is this for??
+    This simply truncates chomp_size dots from the end of the sequence
+    to make it the original length after Conv1d with
+    """
     def __init__(self, chomp_size):
         super(Chomp1d, self).__init__()
         self.chomp_size = chomp_size
@@ -38,7 +44,7 @@ class TemporalBlock(nn.Module):
         if self.downsample is not None:
             self.downsample.weight.data.normal_(0, 0.01)
 
-    def forward(self, x):
+    def forward(self, x):  # [2, 1, 500]
         out = self.net(x)
         res = x if self.downsample is None else self.downsample(x)
         return self.relu(out + res)
@@ -58,7 +64,7 @@ class TemporalConvNet(nn.Module):
  
         self.network = nn.Sequential(*layers)
 
-    def  forward(self, x):
+    def forward(self, x):
         return self.network(x)
 
 
@@ -73,7 +79,7 @@ class TCN(nn.Module):
           self.linear.weight.data.normal_(0, 0.01)
     
     def forward(self, x, channel_last=True):
-        #If channel_last, the expected format is (batch_size, seq_len, features)
+        # If channel_last, the expected format is (batch_size, seq_len, features)
         y1 = self.tcn(x.transpose(1, 2) if channel_last else x)
         return self.linear(y1.transpose(1, 2))
 

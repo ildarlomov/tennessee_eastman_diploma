@@ -26,19 +26,19 @@ class TEPDataset(Dataset):
         # todo: add conditioning on fault number, now we generate only the normal condition
         df = df[(df.faultNumber == 0)]
         work_with_columns = ['faultNumber', 'simulationRun', 'sample', 'xmeas_1']
-        data = torch.from_numpy(
+        raw_data = torch.from_numpy(
             np.expand_dims(
                 np.array(
                     [g[1]["xmeas_1"] for g in df[work_with_columns].groupby(['faultNumber', 'simulationRun'])]
                 ), -1)
         ).float()
         # for checking if logic above is working properly
-        assert np.allclose(data.squeeze()[0, :].numpy(), df[(df.simulationRun == 1) & (df.faultNumber == 0)].xmeas_1.values)
-        self.data = self.normalize(data) if normalize else data
-        self.seq_len = data.size(1)
+        assert np.allclose(raw_data.squeeze()[0, :].numpy(), df[(df.simulationRun == 1) & (df.faultNumber == 0)].xmeas_1.values)
+        self.data = self.normalize(raw_data) if normalize else raw_data
+        self.seq_len = raw_data.size(1)
 
         # Estimates distribution parameters of deltas (Gaussian) from normalized data
-        original_deltas = data[:, -1] - data[:, 0]
+        original_deltas = raw_data[:, -1] - raw_data[:, 0]
         self.original_deltas = original_deltas
         self.or_delta_max, self.or_delta_min = original_deltas.max(), original_deltas.min()
         deltas = self.data[:, -1] - self.data[:, 0]
