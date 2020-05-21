@@ -124,8 +124,8 @@ fixed_noise = torch.randn(opt.batchSize, seq_len, nz, device=device)
 
 if opt.delta_condition:
     #Sample both deltas and noise for visualization
-    deltas = dataset.sample_deltas(opt.batchSize).unsqueeze(2).repeat(1, seq_len, 1)
-    fixed_noise = torch.cat((fixed_noise, deltas), dim=2)
+    deltas = dataset.sample_deltas(opt.batchSize).unsqueeze(2).repeat(1, seq_len, 1).to(device)
+    fixed_noise = torch.cat((fixed_noise, deltas), dim=2).to(device)
 
 real_label = 1
 fake_label = 0
