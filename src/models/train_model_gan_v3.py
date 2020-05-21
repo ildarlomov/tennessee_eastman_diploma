@@ -161,8 +161,8 @@ for epoch in range(opt.epochs):
         noise = torch.randn(batch_size, seq_len, nz, device=device)
         if opt.delta_condition:
             #Sample a delta for each batch and concatenate to the noise for each timestep
-            deltas = dataset.sample_deltas(batch_size).unsqueeze(2).repeat(1, seq_len, 1)
-            noise = torch.cat((noise, deltas), dim=2)
+            deltas = dataset.sample_deltas(batch_size).unsqueeze(2).repeat(1, seq_len, 1).to(device)
+            noise = torch.cat((noise, deltas), dim=2).to(device)
         fake = netG(noise)
         label.fill_(fake_label)
         output = netD(fake.detach())
