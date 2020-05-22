@@ -207,8 +207,10 @@ def main(cuda, debug, run_tag, random_seed):
 
             # Fake data training
             noise = torch.randn(batch_size, seq_len, noise_size, device=device)
-            random_labels = torch.randint(high=trainset.class_count, size=(batch_size, seq_len, 1),
+            random_labels = torch.randint(high=trainset.class_count, size=(batch_size, 1, 1),
                                           dtype=torch.float32, device=device) / trainset.class_count
+            random_labels = random_labels.repeat(1, seq_len, 1)
+            random_labels[:, :20, :] = 0
             noise = torch.cat((noise, random_labels), dim=2)
 
             state_h, state_c = netG.zero_state(batch_size)
@@ -237,8 +239,11 @@ def main(cuda, debug, run_tag, random_seed):
 
             # Fault Type correction
             noise = torch.randn(batch_size, seq_len, noise_size, device=device)
-            random_labels = torch.randint(high=trainset.class_count, size=(batch_size, seq_len, 1),
+            random_labels = torch.randint(high=trainset.class_count, size=(batch_size, 1, 1),
                                           dtype=torch.float32, device=device) / trainset.class_count
+
+            random_labels = random_labels.repeat(1, seq_len, 1)
+            random_labels[:, :20, :] = 0
             noise = torch.cat((noise, random_labels), dim=2)
 
             state_h, state_c = netG.zero_state(batch_size)

@@ -177,3 +177,4 @@ prun_train_gan_v3:
 # sample commands
 #pipenv run tensorboard --logdir logs --bind_all
 #git pull && pipenv run pip install . && pipenv run python src/models/train_model_gan_v4.py --cuda 2 -d --run_tag debug_run
+#git pull && pipenv run pip install . && pipenv run python src/models/train_model_gan_v4.py --cuda 2 --run_tag lstm_generator
