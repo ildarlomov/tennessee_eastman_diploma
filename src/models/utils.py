@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torchvision.utils as vutils
+import os
 
 def time_series_to_plot(time_series_batch, dpi=35, feature_idx=0, n_images_per_row=4, titles=None):
     """Convert a batch of time series to a tensor with a grid of their plots
@@ -88,6 +89,18 @@ class DatasetGenerator:
             np.save(outfile, out_tensor.detach().numpy())
         else:
             return out_tensor 
+
+
+
+def get_latest_model_id(dir_name):
+    model_ids = list()
+    for d in os.listdir(dir_name):
+        if os.path.isdir(os.path.join(dir_name, d)):
+            try:
+                model_ids.append(int(d.split("_")[0]))
+            except ValueError:
+                pass
+    return max(model_ids) if len(model_ids) else 0
 
 
 if __name__ == "__main__":

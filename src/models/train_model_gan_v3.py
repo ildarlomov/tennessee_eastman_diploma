@@ -19,7 +19,6 @@ Baseline GAN train is going to be used for future improvements.
 """
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', default="btp", help='dataset to use (only btp for now)')
 parser.add_argument('--dataset_path', required=True, help='path to dataset')
 parser.add_argument('--debug', help='if run in debug mode', action='store_true')
 parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
@@ -83,12 +82,9 @@ torch.manual_seed(opt.manualSeed)
 cudnn.benchmark = True
 device = torch.device(f"cuda:{opt.cuda}" if torch.cuda.is_available() else "cpu")
 
-if opt.dataset == "btp":
-    # dataset = BtpDataset(opt.dataset_path)
-    dataset = TEPDataset(tep_file_fault_free_train, tep_file_faulty_train)
-assert dataset
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size,
-                                         shuffle=True, num_workers=int(opt.workers))
+dataset = TEPDataset(tep_file_fault_free_train, tep_file_faulty_train)
+
+dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size, shuffle=True, num_workers=int(opt.workers))
 
 nz = int(opt.nz)
 # Retrieve the sequence length as first dimension of a sequence in the dataset

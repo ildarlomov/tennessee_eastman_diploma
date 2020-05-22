@@ -66,6 +66,28 @@ class LSTMDiscriminator(nn.Module):
         return outputs
 
 
+class TEPRNN(nn.Module):
+
+    def __init__(self, seq_size, features_count, class_count, lstm_size):
+        super(TEPRNN, self).__init__()
+        self.seq_size = seq_size
+        self.lstm_size = lstm_size
+        self.lstm = nn.LSTM(features_count,
+                            lstm_size,
+                            batch_first=True)
+        self.dense = nn.Linear(lstm_size, class_count)
+
+    def zero_state(self, batch_size):
+        return (torch.zeros(1, batch_size, self.lstm_size),
+                torch.zeros(1, batch_size, self.lstm_size))
+
+    def forward(self, x, prev_state):
+        output, state = self.lstm(x, prev_state)
+        logits = self.dense(output)
+        return logits, state
+
+
+
 if __name__ == "__main__":
     batch_size = 16
     seq_len = 32

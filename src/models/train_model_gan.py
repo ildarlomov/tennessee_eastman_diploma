@@ -91,7 +91,7 @@ class TEPRNNGANDataset(Dataset):
 
         # cause the dataset has the broken index
         self.df = self.df \
-            .sort_values(by=["faultNumber", "simulationRun", "sample"], ascending=True) \
+            .sort_values(by=["faultNumber", "simulationRun", "sample_normalized"], ascending=True) \
             .reset_index(drop=True)
 
         self.class_count = len(self.df.faultNumber.value_counts())
@@ -101,12 +101,12 @@ class TEPRNNGANDataset(Dataset):
         self.shots_count = self.sample_count - self.window_size + 1
 
         # making labels according to TEP
-        self.labels = self.df.loc[:, ["faultNumber", "sample"]]
+        self.labels = self.df.loc[:, ["faultNumber", "sample_normalized"]]
         self.labels.loc[:, "label"] = self.labels.loc[:, "faultNumber"].astype('long')
         if is_test:
-            self.labels.loc[(self.labels.label != 0) & (self.labels["sample"] <= 160), "label"] = 0
+            self.labels.loc[(self.labels.label != 0) & (self.labels["sample_normalized"] <= 160), "label"] = 0
         else:
-            self.labels.loc[(self.labels["label"] != 0) & (self.labels["sample"] <= 20), "label"] = 0
+            self.labels.loc[(self.labels["label"] != 0) & (self.labels["sample_normalized"] <= 20), "label"] = 0
 
         self.features_count = self.df.shape[1] - 3
 
@@ -115,7 +115,7 @@ class TEPRNNGANDataset(Dataset):
 
     def __getitem__(self, idx):
         """
-        A sample means a bunch of measurements of sensors taken at the same time of  a particular simulation run.
+        A sample_normalized means a bunch of measurements of sensors taken at the same time of  a particular simulation run.
         A bunch of such samples compose a "shot" in the following code.
         This code samples a "shot" from a single simulation run.
         A "shot" is a sequence of samples from 52 sensors of len self.window_size.
@@ -128,7 +128,7 @@ class TEPRNNGANDataset(Dataset):
         if idx - self.window_size < 0:
             idx = self.window_size
 
-        shot_sample = self.df.iloc[idx, :]["sample"]
+        shot_sample = self.df.iloc[idx, :]["sample_normalized"]
 
         if shot_sample < self.window_size:
             idx_offset = self.window_size - shot_sample
@@ -139,7 +139,7 @@ class TEPRNNGANDataset(Dataset):
             idx_offset += 1
         shot = self.df.iloc[int(idx - self.window_size + idx_offset):int(idx + idx_offset), :]
 
-        assert shot.iloc[-1]["sample"] >= self.window_size, "Brah, that's incorrect!"
+        assert shot.iloc[-1]["sample_normalized"] >= self.window_size, "Brah, that's incorrect!"
 
         shot = shot.iloc[:, 3:].to_numpy()
 
@@ -250,6 +250,7 @@ def main(cuda, debug):
     if debug:
         loader_jobs = 0
         batch_size = 2
+        epochs = 2
         tep_file_fault_free_train = "data/raw/sampled_TEP/sampled_train.pkl"
         tep_file_faulty_train = "data/raw/sampled_TEP/sampled_train.pkl"
         tep_file_fault_free_test = "data/raw/sampled_TEP/sampled_test.pkl"
@@ -291,8 +292,6 @@ def main(cuda, debug):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
-    if debug:
-        epochs = 2
     max_accuracy = 0
     for epoch in range(epochs):
 
