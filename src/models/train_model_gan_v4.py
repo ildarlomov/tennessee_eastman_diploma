@@ -66,6 +66,7 @@ def main(cuda, debug, run_tag, random_seed):
 
     device = torch.device(f"cuda:{cuda}" if torch.cuda.is_available() else "cpu")
     logger.info(f'Training begin on {device}')
+    logger.info(f'Tmp TB dir {temp_model_dir_tensorboard.name}, tmp model dir {temp_model_dir.name}')
 
     if random_seed is None:
         random_seed = random.randint(1, 10000)
