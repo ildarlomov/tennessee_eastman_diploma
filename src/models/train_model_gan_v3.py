@@ -13,6 +13,7 @@ from src.models.utils import time_series_to_plot
 from tensorboardX import SummaryWriter
 from src.models.recurrent_models import LSTMGenerator, LSTMDiscriminator
 from src.models.convolutional_models import CausalConvGenerator, CausalConvDiscriminator
+from PIL import Image
 
 """
 Baseline GAN train is going to be used for future improvements.
@@ -245,7 +246,6 @@ for epoch in range(opt.epochs):
     # torchvision.utils.save_image(fake_plot, fp)
 
     ndarr = fake_plot.to('cpu', torch.uint8).permute(1, 2, 0).numpy()
-    from PIL import Image
     im = Image.fromarray(ndarr, mode="RGB")
     im.save(fp, format=None)
     if (epoch % opt.tensorboard_image_every == 0) or (epoch == (opt.epochs - 1)):

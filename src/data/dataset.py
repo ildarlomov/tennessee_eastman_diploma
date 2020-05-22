@@ -60,7 +60,7 @@ class TEPDataset(Dataset):
 
         # todo: add conditioning on fault number, now we generate only the normal condition
         df = df[(df.faultNumber == 0)]
-        work_with_columns = ['faultNumber', 'simulationRun', 'sample_normalized', 'xmeas_1']
+        work_with_columns = ['faultNumber', 'simulationRun', 'sample', 'xmeas_1']
         raw_data = torch.from_numpy(
             np.expand_dims(
                 np.array(
@@ -142,7 +142,7 @@ class TEPDatasetV4(Dataset):
 
         # cause the dataset has the broken index
         self.df = self.df \
-            .sort_values(by=["faultNumber", "simulationRun", "sample_normalized"], ascending=True) \
+            .sort_values(by=["faultNumber", "simulationRun", "sample"], ascending=True) \
             .reset_index(drop=True)
 
         self.class_count = len(self.df.faultNumber.value_counts())
@@ -151,12 +151,12 @@ class TEPDatasetV4(Dataset):
         self.sample_count = 960 if is_test else 500
 
         # making labels according to TEP.
-        self.labels = self.df.loc[:, ["faultNumber", "simulationRun", "sample_normalized"]]
+        self.labels = self.df.loc[:, ["faultNumber", "simulationRun", "sample"]]
         self.labels.loc[:, "label"] = self.labels.loc[:, "faultNumber"].astype('long')
         if is_test:
-            self.labels.loc[(self.labels.label != 0) & (self.labels["sample_normalized"] <= 160), "label"] = 0
+            self.labels.loc[(self.labels.label != 0) & (self.labels["sample"] <= 160), "label"] = 0
         else:
-            self.labels.loc[(self.labels["label"] != 0) & (self.labels["sample_normalized"] <= 20), "label"] = 0
+            self.labels.loc[(self.labels["label"] != 0) & (self.labels["sample"] <= 20), "label"] = 0
 
         self.features_count = self.df.shape[1] - 3
 
@@ -172,12 +172,13 @@ class TEPDatasetV4(Dataset):
             [g[1]["label"].to_numpy() for g in self.labels.groupby(['faultNumber', 'simulationRun'])]
         )
 
-        self.print_sim_run = randint(0, 500)
+        self.max_sim_run_number = int(self.df.simulationRun.max())
+        self.print_sim_run = randint(0, self.max_sim_run_number)
         """
         This is for selecting the proper indices in row_data so the data set contains the only batch 
         of len self.class_count where each fault type occurs exactly once.
         """
-        self.print_ids = [ft * self.sample_count + self.print_sim_run for ft in range(self.class_count)]
+        self.print_ids = [ft * self.max_sim_run_number + self.print_sim_run for ft in range(self.class_count)]
 
     def __len__(self):
         if self.for_print:
@@ -187,7 +188,7 @@ class TEPDatasetV4(Dataset):
 
     def __getitem__(self, idx):
         """
-        Just sample_normalized from self.raw_data and self.raw_labels according to the idx.
+        Just sample from self.raw_data and self.raw_labels according to the idx.
         """
 
         if torch.is_tensor(idx):
@@ -200,7 +201,7 @@ class TEPDatasetV4(Dataset):
             shot_sample = self.raw_data[idx, ...]
             label_sample = self.raw_labels[idx, ...]
 
-        # label = np.expand_dims(label, axis=[1])
+        label_sample = np.expand_dims(label_sample, axis=[1])
         sample = {'shot': shot_sample, 'label': label_sample}
 
         if self.transform:
@@ -209,74 +210,8 @@ class TEPDatasetV4(Dataset):
         return sample
 
     def change_print_sim_run(self):
-        self.print_sim_run = randint(0, 500)
-        self.print_ids = [ft * self.sample_count + self.print_sim_run for ft in range(self.class_count)]
-
-
-    # def __init__(self, tep_file_fault_free, tep_file_faulty, is_test=False, normalize=True):
-    #     """
-    #     Args:
-    #         csv_file (string): path to csv file
-    #         normalize (bool): whether to normalize the data in [-1,1]
-    #     """
-    #     if "sampled" in tep_file_fault_free:
-    #         df = pd.read_pickle(tep_file_fault_free)
-    #     else:
-    #         fault_free = py.read_r(tep_file_fault_free)
-    #         faulty = py.read_r(tep_file_faulty)
-    #         if is_test:
-    #             df = pd.concat([fault_free['fault_free_testing'], faulty['faulty_testing']])
-    #         else:
-    #             df = pd.concat([fault_free['fault_free_training'], faulty['faulty_training']])
-    #
-    #     # todo: add conditioning on fault number, now we generate only the normal condition
-    #     df = df[(df.faultNumber == 0)]
-    #     work_with_columns = ['faultNumber', 'simulationRun', 'sample_normalized', 'xmeas_1']
-    #     raw_data = torch.from_numpy(
-    #         np.expand_dims(
-    #             np.array(
-    #                 [g[1]["xmeas_1"] for g in df[work_with_columns].groupby(['faultNumber', 'simulationRun'])]
-    #             ), -1)
-    #     ).float()
-    #     # for checking if logic above is working properly
-    #     assert np.allclose(raw_data.squeeze()[0, :].numpy(), df[(df.simulationRun == 1) & (df.faultNumber == 0)].xmeas_1.values)
-    #     self.data = self.normalize(raw_data) if normalize else raw_data
-    #     self.seq_len = raw_data.size(1)
-    #
-    #     # Estimates distribution parameters of deltas (Gaussian) from normalized data
-    #     original_deltas = raw_data[:, -1] - raw_data[:, 0]
-    #     self.original_deltas = original_deltas
-    #     self.or_delta_max, self.or_delta_min = original_deltas.max(), original_deltas.min()
-    #     deltas = self.data[:, -1] - self.data[:, 0]
-    #     self.deltas = deltas
-    #     self.delta_mean, self.delta_std = deltas.mean(), deltas.std()
-    #     self.delta_max, self.delta_min = deltas.max(), deltas.min()
-    #
-    # def __len__(self):
-    #     return len(self.data)
-    #
-    # def __getitem__(self, idx):
-    #     return self.data[idx]
-    #
-    # def normalize(self, x):
-    #     """Normalize input in [-1,1] range, saving statics for denormalization"""
-    #     self.max = x.max()
-    #     self.min = x.min()
-    #     return (2 * (x - x.min()) / (x.max() - x.min()) - 1)
-    #
-    # def denormalize(self, x):
-    #     """Revert [-1,1] normalization"""
-    #     if not hasattr(self, 'max') or not hasattr(self, 'min'):
-    #         raise Exception("You are calling denormalize, but the input was not normalized")
-    #     return 0.5 * (x * self.max - x * self.min + self.max + self.min)
-    #
-    # def sample_deltas(self, number):
-    #     """Sample a vector of (number) deltas from the fitted Gaussian"""
-    #     return (torch.randn(number, 1) + self.delta_mean) * self.delta_std
-    #
-    # def normalize_deltas(self, x):
-    #     return ((self.delta_max - self.delta_min) * (x - self.or_delta_min) / (
-    #                 self.or_delta_max - self.or_delta_min) + self.delta_min)
+        self.print_sim_run = randint(0, self.max_sim_run_number)
+        self.print_ids = [ft * self.max_sim_run_number + self.print_sim_run for ft in range(self.class_count)]
 
 
 class TEPRNNGANDataset(Dataset):
@@ -304,7 +239,7 @@ class TEPRNNGANDataset(Dataset):
 
         # cause the dataset has the broken index
         self.df = self.df \
-            .sort_values(by=["faultNumber", "simulationRun", "sample_normalized"], ascending=True) \
+            .sort_values(by=["faultNumber", "simulationRun", "sample"], ascending=True) \
             .reset_index(drop=True)
 
         self.class_count = len(self.df.faultNumber.value_counts())
@@ -314,12 +249,12 @@ class TEPRNNGANDataset(Dataset):
         self.shots_count = self.sample_count - self.window_size + 1
 
         # making labels according to TEP
-        self.labels = self.df.loc[:, ["faultNumber", "sample_normalized"]]
+        self.labels = self.df.loc[:, ["faultNumber", "sample"]]
         self.labels.loc[:, "label"] = self.labels.loc[:, "faultNumber"].astype('long')
         if is_test:
-            self.labels.loc[(self.labels.label != 0) & (self.labels["sample_normalized"] <= 160), "label"] = 0
+            self.labels.loc[(self.labels.label != 0) & (self.labels["sample"] <= 160), "label"] = 0
         else:
-            self.labels.loc[(self.labels["label"] != 0) & (self.labels["sample_normalized"] <= 20), "label"] = 0
+            self.labels.loc[(self.labels["label"] != 0) & (self.labels["sample"] <= 20), "label"] = 0
 
         self.features_count = self.df.shape[1] - 3
 
@@ -328,7 +263,7 @@ class TEPRNNGANDataset(Dataset):
 
     def __getitem__(self, idx):
         """
-        A sample_normalized means a bunch of measurements of sensors taken at the same time of  a particular simulation run.
+        A sample means a bunch of measurements of sensors taken at the same time of  a particular simulation run.
         A bunch of such samples compose a "shot" in the following code.
         This code samples a "shot" from a single simulation run.
         A "shot" is a sequence of samples from 52 sensors of len self.window_size.
@@ -341,7 +276,7 @@ class TEPRNNGANDataset(Dataset):
         if idx - self.window_size < 0:
             idx = self.window_size
 
-        shot_sample = self.df.iloc[idx, :]["sample_normalized"]
+        shot_sample = self.df.iloc[idx, :]["sample"]
 
         if shot_sample < self.window_size:
             idx_offset = self.window_size - shot_sample
@@ -352,7 +287,7 @@ class TEPRNNGANDataset(Dataset):
             idx_offset += 1
         shot = self.df.iloc[int(idx - self.window_size + idx_offset):int(idx + idx_offset), :]
 
-        assert shot.iloc[-1]["sample_normalized"] >= self.window_size, "Brah, that's incorrect!"
+        assert shot.iloc[-1]["sample"] >= self.window_size, "Brah, that's incorrect!"
 
         shot = shot.iloc[:, 3:].to_numpy()
 

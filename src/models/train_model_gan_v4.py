@@ -21,12 +21,12 @@ from src.data.dataset import TEPDataset
 from src.models.utils import time_series_to_plot
 from tensorboardX import SummaryWriter
 import random
+from PIL import Image
 
 """This is training of Conditioned GAN model script."""
 
 REAL_LABEL = 1
 FAKE_LABEL = 0
-cudnn.benchmark = True
 
 
 @click.command()
@@ -38,11 +38,19 @@ def main(cuda, debug, run_tag, random_seed):
     """
     todo: write something
     """
+    # for tensorboard logs
+    try:
+        os.makedirs("logs")
+    except OSError:
+        pass
+
     log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     logging.basicConfig(level=logging.INFO)
     temp_model_dir = TemporaryDirectory(dir="models")
     temp_model_dir.cleanup()
     Path(temp_model_dir.name).mkdir(parents=True, exist_ok=False)
+    Path(os.path.join(temp_model_dir.name), "images").mkdir(parents=True, exist_ok=False)
+    Path(os.path.join(temp_model_dir.name), "weights").mkdir(parents=True, exist_ok=False)
     temp_model_dir_tensorboard = TemporaryDirectory(dir="logs")
     temp_model_dir_tensorboard.cleanup()
     Path(temp_model_dir_tensorboard.name).mkdir(parents=True, exist_ok=False)
@@ -96,8 +104,8 @@ def main(cuda, debug, run_tag, random_seed):
 
     if debug:
         loader_jobs = 0
-        batch_size = 2
-        epochs = 2
+        bs = 2
+        epochs = 4
         tep_file_fault_free_train = "data/raw/sampled_TEP/sampled_train.pkl"
         tep_file_faulty_train = "data/raw/sampled_TEP/sampled_train.pkl"
         tep_file_fault_free_test = "data/raw/sampled_TEP/sampled_test.pkl"
@@ -141,7 +149,7 @@ def main(cuda, debug, run_tag, random_seed):
     netD = CausalConvDiscriminator(input_size=trainset.features_count,
                                    n_layers=8, n_channel=10, kernel_size=8,
                                    dropout=0).to(device)
-    netG = LSTMGenerator(in_dim=in_dim, out_dim=1, hidden_dim=256).to(device)
+    netG = LSTMGenerator(in_dim=in_dim, out_dim=52, hidden_dim=256).to(device)
 
     # for getting a scores on what the predicted class for the generated sequence is
     net = TEPRNN(
@@ -151,7 +159,10 @@ def main(cuda, debug, run_tag, random_seed):
         features_count=trainset.features_count
     ).to(device)
 
-    net.load_state_dict(torch.load(fault_type_classifier_weights))
+    # net.load_state_dict(torch.load(fault_type_classifier_weights))
+    map_loc = f"cuda:{cuda}" if torch.cuda.is_available() else "cpu"
+    # cuda:2 because the model was actually trained on cuda:2 device.
+    net.load_state_dict(torch.load(fault_type_classifier_weights, map_location={'cuda:2': map_loc}))
 
     logger.info("Generator:\n" + str(netG))
     logger.info("Discriminator:\n" + str(netD))
@@ -163,7 +174,6 @@ def main(cuda, debug, run_tag, random_seed):
     optimizerD = optim.SGD(netD.parameters(), lr=0.001, momentum=0.9)
     optimizerG = optim.SGD(netG.parameters(), lr=0.001, momentum=0.9)
 
-    max_accuracy = 0
     for epoch in range(epochs):
 
         logger.info('Epoch %d training...' % epoch)
@@ -179,6 +189,9 @@ def main(cuda, debug, run_tag, random_seed):
 
             real_inputs, fault_labels = data["shot"], data["label"]
             real_inputs, fault_labels = real_inputs.to(device), fault_labels.to(device)
+            real_inputs = real_inputs.squeeze(dim=1)
+            fault_labels = fault_labels.squeeze()
+
             netD.zero_grad()
 
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
@@ -193,7 +206,8 @@ def main(cuda, debug, run_tag, random_seed):
 
             # Fake data training
             noise = torch.randn(batch_size, seq_len, noise_size, device=device)
-            random_labels = torch.randint(high=trainset.class_count, size=(batch_size, seq_len, 1), device=device)
+            random_labels = torch.randint(high=trainset.class_count, size=(batch_size, seq_len, 1),
+                                          dtype=torch.float32, device=device) / trainset.class_count
             noise = torch.cat((noise, random_labels), dim=2)
 
             state_h, state_c = netG.zero_state(batch_size)
@@ -222,7 +236,8 @@ def main(cuda, debug, run_tag, random_seed):
 
             # Fault Type correction
             noise = torch.randn(batch_size, seq_len, noise_size, device=device)
-            random_labels = torch.randint(high=trainset.class_count, size=(batch_size, seq_len, 1), device=device)
+            random_labels = torch.randint(high=trainset.class_count, size=(batch_size, seq_len, 1),
+                                          dtype=torch.float32, device=device) / trainset.class_count
             noise = torch.cat((noise, random_labels), dim=2)
 
             state_h, state_c = netG.zero_state(batch_size)
@@ -244,17 +259,16 @@ def main(cuda, debug, run_tag, random_seed):
 
             log_flag = True if debug else (i + 1) % 20 == 0
             if log_flag:
-                logger.info('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
-                      % (epoch, epochs, i, len(trainloader),
-                         errD.item(), errG.item(), D_x, D_G_z1, D_G_z2), end='')
+                logger.info('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f' %
+                            (epoch, epochs, i, len(trainloader), errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
-            writer.add_scalar('Fault type Cross Entropy loss', fault_type_loss.item(), n_iter)
+            writer.add_scalar('FaultTypeCrossEntropyLoss', fault_type_loss.item(), n_iter)
             writer.add_scalar('DiscriminatorLoss', errD.item(), n_iter)
             writer.add_scalar('GeneratorLoss', errG.item(), n_iter)
-            writer.add_scalar('D(X)', D_x, n_iter)
-            writer.add_scalar('D(G(z))', D_G_z1, n_iter)
+            writer.add_scalar('DofX', D_x, n_iter)
+            writer.add_scalar('DofGofz', D_G_z1, n_iter)
 
-            if debug and i > 100:
+            if debug and i > 10:
                 break
 
         logger.info('Epoch %d passed' % epoch)
@@ -268,11 +282,16 @@ def main(cuda, debug, run_tag, random_seed):
         real_display = inverse_transform(real_display)
 
         real_plot = time_series_to_plot(real_display["shot"].cpu())
-        writer.add_image("Real TEP", real_plot, epoch)
+        fp_real = os.path.join(temp_model_dir.name, "images", f"{epoch}_epoch_real.jpg")
+        ndarr = real_plot.to('cpu', torch.uint8).permute(1, 2, 0).numpy()
+        im = Image.fromarray(ndarr, mode="RGB")
+        im.save(fp_real, format=None)
+
+        writer.add_image("RealTEP", real_plot, epoch)
 
         batch_size, seq_len = real_inputs.size(0), real_inputs.size(1)
         noise = torch.randn(batch_size, seq_len, noise_size, device=device)
-        noise = torch.cat((noise, true_labels), dim=2)
+        noise = torch.cat((noise, true_labels.float() / trainset.class_count), dim=2)
 
         state_h, state_c = netG.zero_state(batch_size)
         state_h, state_c = state_h.to(device), state_c.to(device)
@@ -280,19 +299,19 @@ def main(cuda, debug, run_tag, random_seed):
         fake_display = {"shot": fake_display, "label": true_labels}
         fake_display = inverse_transform(fake_display)
         fake_plot = time_series_to_plot(fake_display["shot"].cpu())
-        fp = os.path.join(opt.imf, opt.run_tag + '_epoch' + str(epoch) + '.jpg')
-        torchvision.utils.save_image(fake_plot, fp)
+        fp_fake = os.path.join(temp_model_dir.name, "images", f"{epoch}_epoch_fake.jpg")
 
         ndarr = fake_plot.to('cpu', torch.uint8).permute(1, 2, 0).numpy()
-        from PIL import Image
         im = Image.fromarray(ndarr, mode="RGB")
-        im.save(fp, format=None)
-        if (epoch % opt.tensorboard_image_every == 0) or (epoch == (opt.epochs - 1)):
-            writer.add_image("Fake", fake_plot, epoch)
+        im.save(fp_fake, format=None)
+
+        writer.add_image("FakeTEP", fake_plot, epoch)
 
         if (epoch % checkpoint_every == 0) or (epoch == (epochs - 1)):
             torch.save(netG, os.path.join(temp_model_dir.name, "weights", f"{epoch}_epoch_generator.pth"))
             torch.save(netD, os.path.join(temp_model_dir.name, "weights", f"{epoch}_epoch_discriminator.pth"))
+
+        printset.change_print_sim_run()
 
     logger.info(f'Finished training for {epochs} epochs.')
 
