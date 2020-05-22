@@ -173,7 +173,7 @@ class TEPDatasetV4(Dataset):
         )
 
         self.max_sim_run_number = int(self.df.simulationRun.max())
-        self.print_sim_run = randint(0, self.max_sim_run_number)
+        self.print_sim_run = randint(0, self.max_sim_run_number - 1)
         """
         This is for selecting the proper indices in row_data so the data set contains the only batch 
         of len self.class_count where each fault type occurs exactly once.
@@ -210,7 +210,7 @@ class TEPDatasetV4(Dataset):
         return sample
 
     def change_print_sim_run(self):
-        self.print_sim_run = randint(0, self.max_sim_run_number)
+        self.print_sim_run = randint(0, self.max_sim_run_number - 1)
         self.print_ids = [ft * self.max_sim_run_number + self.print_sim_run for ft in range(self.class_count)]
 
 
