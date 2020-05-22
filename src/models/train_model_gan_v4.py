@@ -89,9 +89,9 @@ def main(cuda, debug, run_tag, random_seed):
 
     lstm_size = 64
     loader_jobs = 8
-    epochs = 20
+    epochs = 200
     window_size = 30
-    bs = 64
+    bs = 128
     tep_file_fault_free_train = "data/raw/TEP_FaultFree_Training.RData"
     tep_file_faulty_train = "data/raw/TEP_Faulty_Training.RData"
     tep_file_fault_free_test = "data/raw/TEP_FaultFree_Testing.RData"
