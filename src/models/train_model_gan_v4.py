@@ -297,9 +297,9 @@ def main(cuda, debug, run_tag, random_seed):
         state_h, state_c = netG.zero_state(batch_size)
         state_h, state_c = state_h.to(device), state_c.to(device)
         fake_display = netG(noise, (state_h, state_c))
-        fake_display = {"shot": fake_display, "label": true_labels}
+        fake_display = {"shot": fake_display.cpu(), "label": true_labels}
         fake_display = inverse_transform(fake_display)
-        fake_plot = time_series_to_plot(fake_display["shot"].cpu())
+        fake_plot = time_series_to_plot(fake_display["shot"])
         fp_fake = os.path.join(temp_model_dir.name, "images", f"{epoch}_epoch_fake.jpg")
 
         ndarr = fake_plot.to('cpu', torch.uint8).permute(1, 2, 0).numpy()
