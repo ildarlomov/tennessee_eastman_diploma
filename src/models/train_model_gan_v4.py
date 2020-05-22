@@ -15,7 +15,7 @@ from argparse import Namespace
 from src.data.dataset import ToTensor, Normalize, TEPDatasetV4, InverseNormalize
 from src.models.utils import get_latest_model_id
 from src.models.recurrent_models import TEPRNN, LSTMGenerator
-from src.models.convolutional_models import CausalConvDiscriminator
+from src.models.convolutional_models import CausalConvDiscriminator, CausalConvGenerator
 import torch.backends.cudnn as cudnn
 from src.data.dataset import TEPDataset
 from src.models.utils import time_series_to_plot
@@ -89,7 +89,7 @@ def main(cuda, debug, run_tag, random_seed):
     )
 
     lstm_size = 64
-    loader_jobs = 8
+    loader_jobs = 4
     epochs = 200
     window_size = 30
     bs = 128
@@ -150,7 +150,8 @@ def main(cuda, debug, run_tag, random_seed):
     netD = CausalConvDiscriminator(input_size=trainset.features_count,
                                    n_layers=8, n_channel=10, kernel_size=8,
                                    dropout=0).to(device)
-    netG = LSTMGenerator(in_dim=in_dim, out_dim=52, hidden_dim=256).to(device)
+    # netG = LSTMGenerator(in_dim=in_dim, out_dim=52, hidden_dim=256).to(device)
+    netG = CausalConvGenerator(noise_size=in_dim, output_size=52, n_layers=8, n_channel=10, kernel_size=8, dropout=0.2).to(device)
 
     # for getting a scores on what the predicted class for the generated sequence is
     net = TEPRNN(
@@ -216,7 +217,7 @@ def main(cuda, debug, run_tag, random_seed):
 
             state_h, state_c = netG.zero_state(batch_size)
             state_h, state_c = state_h.to(device), state_c.to(device)
-            # logits, (state_h, state_c) = net(real_inputs, (state_h, state_c))
+
             fake_inputs = netG(noise, (state_h, state_c))
             fake_target = torch.full((batch_size, seq_len, 1), FAKE_LABEL, device=device)
             output = netD(fake_inputs.detach())
@@ -281,6 +282,9 @@ def main(cuda, debug, run_tag, random_seed):
         logger.info('Epoch %d passed' % epoch)
 
         # Saving epoch results.
+        netD.eval()
+        netG.eval()
+        net.eval()
 
         real_display = next(iter(printloader))
         real_inputs, true_labels = real_display["shot"], real_display["label"]

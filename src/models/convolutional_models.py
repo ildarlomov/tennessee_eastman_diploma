@@ -125,8 +125,12 @@ class CausalConvGenerator(nn.Module):
         num_channels = [n_channel] * n_layers
         self.tcn = TCN(noise_size, output_size, num_channels, kernel_size, dropout)
         
-    def forward(self, x, channel_last=True):
+    def forward(self, x, _, channel_last=True):
         return torch.tanh(self.tcn(x, channel_last))
+
+    def zero_state(self, _):
+        # just to make it compatible with LSTM architecture
+        return torch.randn(1), torch.randn(1)
 
 
 if __name__ == "__main__":
