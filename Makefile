@@ -174,3 +174,6 @@ prun_train_gan_v3:
 	pipenv run pip install .
 	pipenv run python src/models/train_model_gan_v3.py --cuda 2 --dataset_path data/raw/sampled_TEP/sampled_train.pkl --delta_condition --gen_type lstm --dis_type cnn --alternate --run_tag cnn_generation_gan_v3
 
+# sample commands
+#pipenv run tensorboard --logdir logs --bind_all
+#git pull && pipenv run pip install . && pipenv run python src/models/train_model_gan_v4.py --cuda 2 -d --run_tag debug_run

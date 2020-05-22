@@ -179,7 +179,8 @@ def main(cuda, debug, run_tag, random_seed):
         logger.info('Epoch %d training...' % epoch)
         netD.train()
         netG.train()
-        net.eval()
+        # can do this cause we dont use optimizer for this net now
+        net.train()
 
         for i, data in enumerate(trainloader, 0):
             n_iter = epoch * len(trainloader) + i
