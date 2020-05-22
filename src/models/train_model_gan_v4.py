@@ -89,7 +89,7 @@ def main(cuda, debug, run_tag, random_seed):
     )
 
     lstm_size = 64
-    loader_jobs = 4
+    loader_jobs = 1
     epochs = 200
     window_size = 30
     bs = 128
@@ -104,7 +104,7 @@ def main(cuda, debug, run_tag, random_seed):
     checkpoint_every = 5
 
     if debug:
-        loader_jobs = 0
+        loader_jobs = 1
         bs = 2
         epochs = 4
         tep_file_fault_free_train = "data/raw/sampled_TEP/sampled_train.pkl"
