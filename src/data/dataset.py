@@ -5,6 +5,7 @@ import numpy as np
 import pyreadr as py
 from torchvision.transforms.functional import to_tensor, resize
 from random import randint
+import gc
 
 # TEP normalisation constants from EDA_v1 notebook
 TEP_MEAN = torch.from_numpy(np.array(
@@ -179,6 +180,10 @@ class TEPDatasetV4(Dataset):
         of len self.class_count where each fault type occurs exactly once.
         """
         self.print_ids = [ft * self.max_sim_run_number + self.print_sim_run for ft in range(self.class_count)]
+
+        del self.df
+        gc.collect()
+
 
     def __len__(self):
         if self.for_print:

@@ -150,8 +150,8 @@ def main(cuda, debug, run_tag, random_seed):
     netD = CausalConvDiscriminator(input_size=trainset.features_count,
                                    n_layers=8, n_channel=10, kernel_size=8,
                                    dropout=0).to(device)
-    # netG = LSTMGenerator(in_dim=in_dim, out_dim=52, hidden_dim=256).to(device)
-    netG = CausalConvGenerator(noise_size=in_dim, output_size=52, n_layers=8, n_channel=10, kernel_size=8, dropout=0.2).to(device)
+    netG = LSTMGenerator(in_dim=in_dim, out_dim=52, hidden_dim=256).to(device)
+    # netG = CausalConvGenerator(noise_size=in_dim, output_size=52, n_layers=8, n_channel=10, kernel_size=8, dropout=0.2).to(device)
 
     # for getting a scores on what the predicted class for the generated sequence is
     net = TEPRNN(
