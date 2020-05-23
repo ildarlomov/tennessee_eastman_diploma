@@ -215,7 +215,7 @@ def main(cuda, debug, run_tag, random_seed):
             batch_size, seq_len = real_inputs.size(0), real_inputs.size(1)
             # real_target = torch.full((batch_size, seq_len, 1), REAL_LABEL, device=device)
             # for  label smoothing on [0.74, 1.0]
-            real_target = (0.74 - 1.0) - torch.rand(2, 500, 1, device=device) + 1.0
+            real_target = (0.74 - 1.0) - torch.rand(batch_size, seq_len, 1, device=device) + 1.0
 
 
             type_logits, fake_logits = netD(real_inputs, None)
@@ -242,7 +242,7 @@ def main(cuda, debug, run_tag, random_seed):
             fake_inputs = netG(noise, (state_h, state_c))
             # fake_target = torch.full((batch_size, seq_len, 1), FAKE_LABEL, device=device)
             # for  label smoothing on [0.0, 0.3]
-            fake_target = (0.0 - 0.3) - torch.rand(2, 500, 1, device=device) + 0.3
+            fake_target = (0.0 - 0.3) - torch.rand(batch_size, seq_len, 1, device=device) + 0.3
             # WARNING: do not forget about detach!
             type_logits, fake_logits = netD(fake_inputs.detach(), None)
             errD_fake = binary_criterion(fake_logits, fake_target)
