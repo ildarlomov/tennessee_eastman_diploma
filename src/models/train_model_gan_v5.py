@@ -102,7 +102,7 @@ def main(cuda, debug, run_tag, random_seed):
     )
 
     lstm_size = 64
-    loader_jobs = 3
+    loader_jobs = 2
     epochs = 50
     window_size = 30
     bs = 128
