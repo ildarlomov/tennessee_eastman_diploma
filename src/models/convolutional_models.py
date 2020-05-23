@@ -37,13 +37,13 @@ class TemporalBlock(nn.Module):
                                  self.conv2, self.chomp2, self.relu2, self.dropout2)
         self.downsample = nn.Conv1d(n_inputs, n_outputs, 1) if n_inputs != n_outputs else None
         self.relu = nn.LeakyReLU(0.1)
-        self.init_weights()
+        # self.init_weights()
 
-    def init_weights(self):
-        self.conv1.weight.data.normal_(0, 0.01)
-        self.conv2.weight.data.normal_(0, 0.01)
-        if self.downsample is not None:
-            self.downsample.weight.data.normal_(0, 0.01)
+    # def init_weights(self):
+    #     self.conv1.weight.data.normal_(0, 0.01)
+    #     self.conv2.weight.data.normal_(0, 0.01)
+    #     if self.downsample is not None:
+    #         self.downsample.weight.data.normal_(0, 0.01)
 
     def forward(self, x):  # [2, 1, 500]
         out = self.net(x)
@@ -74,10 +74,10 @@ class TCN(nn.Module):
         super(TCN, self).__init__()
         self.tcn = TemporalConvNet(input_size, num_channels, kernel_size=kernel_size, dropout=dropout)
         self.linear = nn.Linear(num_channels[-1], output_size)
-        self.init_weights()
+        # self.init_weights()
 
-    def init_weights(self):
-          self.linear.weight.data.normal_(0, 0.01)
+    # def init_weights(self):
+    #       self.linear.weight.data.normal_(0, 0.01)
     
     def forward(self, x, channel_last=True):
         # If channel_last, the expected format is (batch_size, seq_len, features)

@@ -16,8 +16,8 @@ from src.data.dataset import ToTensor, Normalize, TEPDatasetV4, InverseNormalize
 from src.models.utils import get_latest_model_id
 from src.models.recurrent_models import TEPRNN, LSTMGenerator
 from src.models.convolutional_models import (
-    # CausalConvDiscriminator,
-    # CausalConvGenerator,
+    CausalConvDiscriminator,
+    CausalConvGenerator,
     CausalConvDiscriminatorMultitask
 )
 import torch.backends.cudnn as cudnn
@@ -50,12 +50,14 @@ def main(cuda, debug, run_tag, random_seed):
 
     log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     logging.basicConfig(level=logging.INFO)
-    temp_model_dir = TemporaryDirectory(dir="models")
+    latest_model_id = get_latest_model_id(dir_name="models") + 1
+    prefix = f'{latest_model_id}_{run_tag}_tmp_'
+    temp_model_dir = TemporaryDirectory(dir="models", prefix=prefix)
     temp_model_dir.cleanup()
     Path(temp_model_dir.name).mkdir(parents=True, exist_ok=False)
     Path(os.path.join(temp_model_dir.name), "images").mkdir(parents=True, exist_ok=False)
     Path(os.path.join(temp_model_dir.name), "weights").mkdir(parents=True, exist_ok=False)
-    temp_model_dir_tensorboard = TemporaryDirectory(dir="logs")
+    temp_model_dir_tensorboard = TemporaryDirectory(dir="logs", prefix=prefix)
     temp_model_dir_tensorboard.cleanup()
     Path(temp_model_dir_tensorboard.name).mkdir(parents=True, exist_ok=False)
     temp_log_file = os.path.join(temp_model_dir.name, 'log.txt')
@@ -114,9 +116,9 @@ def main(cuda, debug, run_tag, random_seed):
     fault_type_classifier_weights = "models/2/latest.pth"
     checkpoint_every = 10
     real_fake_w_d = 1.0  # weight for real fake in loss
-    fault_type_w_d = 0.01  # weight for fault type term in loss
+    fault_type_w_d = 0.8  # weight for fault type term in loss
     real_fake_w_g = 1.0  # weight for real fake in loss
-    similarity_w_g = 0.2  # weight for fault type term in loss
+    similarity_w_g = 1.0  # weight for fault type term in loss
 
     if debug:
         loader_jobs = 1
@@ -170,21 +172,21 @@ def main(cuda, debug, run_tag, random_seed):
     # netD = CausalConvDiscriminator(input_size=trainset.features_count,
     #                                n_layers=8, n_channel=10, kernel_size=8,
     #                                dropout=0).to(device)
-    netG = LSTMGenerator(in_dim=in_dim, out_dim=52, hidden_dim=256).to(device)
-    # netG = CausalConvGenerator(noise_size=in_dim, output_size=52, n_layers=8, n_channel=10, kernel_size=8,
-    #                            dropout=0.2).to(device)
+    # netG = LSTMGenerator(in_dim=in_dim, out_dim=52, hidden_dim=256).to(device)
+    netG = CausalConvGenerator(noise_size=in_dim, output_size=52, n_layers=8, n_channel=150, kernel_size=8,
+                               dropout=0.2).to(device)
 
     netD = CausalConvDiscriminatorMultitask(input_size=trainset.features_count,
-                                            n_layers=8, n_channel=200, class_count=trainset.class_count,
-                                            kernel_size=8, dropout=0).to(device)
+                                            n_layers=8, n_channel=150, class_count=trainset.class_count,
+                                            kernel_size=8, dropout=0.2).to(device)
 
     logger.info("Generator:\n" + str(netG))
     logger.info("Discriminator:\n" + str(netD))
 
     binary_criterion = nn.BCEWithLogitsLoss()
     cross_entropy_criterion = nn.CrossEntropyLoss()
-    similarity = nn.MSELoss(reduction='sum')
-    # similarity = nn.L1Loss()
+    # similarity = nn.MSELoss()
+    similarity = nn.L1Loss(reduction='sum')
 
 
     optimizerD = optim.Adam(netD.parameters(), lr=0.0002)
@@ -211,7 +213,10 @@ def main(cuda, debug, run_tag, random_seed):
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
             # Real data training
             batch_size, seq_len = real_inputs.size(0), real_inputs.size(1)
-            real_target = torch.full((batch_size, seq_len, 1), REAL_LABEL, device=device)
+            # real_target = torch.full((batch_size, seq_len, 1), REAL_LABEL, device=device)
+            # for  label smoothing on [0.74, 1.0]
+            real_target = (0.74 - 1.0) - torch.rand(2, 500, 1, device=device) + 1.0
+
 
             type_logits, fake_logits = netD(real_inputs, None)
             errD_real = binary_criterion(fake_logits, real_target)
@@ -235,7 +240,9 @@ def main(cuda, debug, run_tag, random_seed):
             state_h, state_c = state_h.to(device), state_c.to(device)
 
             fake_inputs = netG(noise, (state_h, state_c))
-            fake_target = torch.full((batch_size, seq_len, 1), FAKE_LABEL, device=device)
+            # fake_target = torch.full((batch_size, seq_len, 1), FAKE_LABEL, device=device)
+            # for  label smoothing on [0.0, 0.3]
+            fake_target = (0.0 - 0.3) - torch.rand(2, 500, 1, device=device) + 0.3
             # WARNING: do not forget about detach!
             type_logits, fake_logits = netD(fake_inputs.detach(), None)
             errD_fake = binary_criterion(fake_logits, fake_target)
@@ -350,7 +357,6 @@ def main(cuda, debug, run_tag, random_seed):
     file_handler.close()
     writer.close()
 
-    latest_model_id = get_latest_model_id(dir_name="models") + 1
     os.rename(
         temp_model_dir.name,
         os.path.join("models", f'{latest_model_id}_{run_tag}')
