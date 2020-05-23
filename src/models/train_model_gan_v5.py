@@ -172,21 +172,23 @@ def main(cuda, debug, run_tag, random_seed):
     # netD = CausalConvDiscriminator(input_size=trainset.features_count,
     #                                n_layers=8, n_channel=10, kernel_size=8,
     #                                dropout=0).to(device)
-    # netG = LSTMGenerator(in_dim=in_dim, out_dim=52, hidden_dim=256).to(device)
-    netG = CausalConvGenerator(noise_size=in_dim, output_size=52, n_layers=8, n_channel=150, kernel_size=8,
-                               dropout=0.2).to(device)
+    netG = LSTMGenerator(in_dim=in_dim, out_dim=52, hidden_dim=256).to(device)
+    # netG = CausalConvGenerator(noise_size=in_dim, output_size=52, n_layers=8, n_channel=150, kernel_size=8,
+    #                            dropout=0.2).to(device)
+
+    # nn.ConvTranspose2d()
 
     netD = CausalConvDiscriminatorMultitask(input_size=trainset.features_count,
                                             n_layers=8, n_channel=150, class_count=trainset.class_count,
-                                            kernel_size=8, dropout=0.2).to(device)
+                                            kernel_size=9, dropout=0.2).to(device)
 
     logger.info("Generator:\n" + str(netG))
     logger.info("Discriminator:\n" + str(netD))
 
     binary_criterion = nn.BCEWithLogitsLoss()
     cross_entropy_criterion = nn.CrossEntropyLoss()
-    # similarity = nn.MSELoss()
-    similarity = nn.L1Loss(reduction='sum')
+    similarity = nn.MSELoss(reduction='mean')
+    # similarity = nn.L1Loss(reduction='sum')
 
 
     optimizerD = optim.Adam(netD.parameters(), lr=0.0002)
@@ -213,9 +215,9 @@ def main(cuda, debug, run_tag, random_seed):
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
             # Real data training
             batch_size, seq_len = real_inputs.size(0), real_inputs.size(1)
-            # real_target = torch.full((batch_size, seq_len, 1), REAL_LABEL, device=device)
+            real_target = torch.full((batch_size, seq_len, 1), REAL_LABEL, device=device)
             # for  label smoothing on [0.74, 1.0]
-            real_target = (0.74 - 1.0) - torch.rand(batch_size, seq_len, 1, device=device) + 1.0
+            # real_target = (0.74 - 1.0) - torch.rand(batch_size, seq_len, 1, device=device) + 1.0
 
 
             type_logits, fake_logits = netD(real_inputs, None)
@@ -240,9 +242,9 @@ def main(cuda, debug, run_tag, random_seed):
             state_h, state_c = state_h.to(device), state_c.to(device)
 
             fake_inputs = netG(noise, (state_h, state_c))
-            # fake_target = torch.full((batch_size, seq_len, 1), FAKE_LABEL, device=device)
+            fake_target = torch.full((batch_size, seq_len, 1), FAKE_LABEL, device=device)
             # for  label smoothing on [0.0, 0.3]
-            fake_target = (0.0 - 0.3) - torch.rand(batch_size, seq_len, 1, device=device) + 0.3
+            # fake_target = (0.0 - 0.3) - torch.rand(batch_size, seq_len, 1, device=device) + 0.3
             # WARNING: do not forget about detach!
             type_logits, fake_logits = netD(fake_inputs.detach(), None)
             errD_fake = binary_criterion(fake_logits, fake_target)
