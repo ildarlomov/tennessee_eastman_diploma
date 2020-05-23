@@ -100,7 +100,7 @@ class CausalConvDiscriminatorMultitask(nn.Module):
     """
 
     def __init__(self, input_size, n_layers, n_channel, class_count, kernel_size, dropout=0):
-        super().__init__()
+        super(CausalConvDiscriminatorMultitask, self).__init__()
         # Assuming same number of channels layerwise
         num_channels = [n_channel] * n_layers
         self.tcn = TemporalConvNet(input_size, num_channels, kernel_size=kernel_size, dropout=dropout)
@@ -115,7 +115,7 @@ class CausalConvDiscriminatorMultitask(nn.Module):
         self.activation = nn.LeakyReLU(0.1)
 
     def forward(self, x, _, channel_last=True):
-        common = self.tcn(x.transpose(1, 2) if channel_last else x)
+        common = self.tcn(x.transpose(1, 2) if channel_last else x).transpose(1, 2)
         type_logits = self.activation(self.fault_type_head_fc1(common))
         type_logits = self.activation(self.fault_type_head_fc2(type_logits))
         type_logits = self.fault_type_head_fc3(type_logits)

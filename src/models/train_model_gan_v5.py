@@ -202,7 +202,7 @@ def main(cuda, debug, run_tag, random_seed):
 
             type_logits, fake_logits = netD(real_inputs, None)
             errD_real = binary_criterion(fake_logits, real_target)
-            errD_type_real = cross_entropy_criterion(type_logits, fault_labels)
+            errD_type_real = cross_entropy_criterion(type_logits.transpose(1, 2), fault_labels)
             # todo: print at tensorboard errD_real + errD_type
 
             errD_complex_real = real_fake_w_d * errD_real + fault_type_w_d * errD_type_real
@@ -226,7 +226,7 @@ def main(cuda, debug, run_tag, random_seed):
             # WARNING: do not forget about detach!
             type_logits, fake_logits = netD(fake_inputs.detach(), None)
             errD_fake = binary_criterion(fake_logits, fake_target)
-            errD_type_fake = cross_entropy_criterion(type_logits, random_labels.double().squeeze())
+            errD_type_fake = cross_entropy_criterion(type_logits.transpose(1, 2), random_labels.long().squeeze())
 
             errD_complex_fake = real_fake_w_d * errD_fake + fault_type_w_d * errD_type_fake
             errD_complex_fake.backward()
@@ -255,7 +255,7 @@ def main(cuda, debug, run_tag, random_seed):
             # Visual similarity correction
             # todo: add KL-divergence term
             noise = torch.randn(batch_size, seq_len, noise_size, device=device)
-            noise = torch.cat((noise, fault_labels), dim=2)
+            noise = torch.cat((noise, fault_labels.float().unsqueeze(2)), dim=2)
 
             state_h, state_c = netG.zero_state(batch_size)
             state_h, state_c = state_h.to(device), state_c.to(device)
