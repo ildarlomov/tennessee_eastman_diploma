@@ -15,7 +15,11 @@ from argparse import Namespace
 from src.data.dataset import ToTensor, Normalize, TEPDatasetV4, InverseNormalize
 from src.models.utils import get_latest_model_id
 from src.models.recurrent_models import TEPRNN, LSTMGenerator
-from src.models.convolutional_models import CausalConvDiscriminator, CausalConvGenerator
+from src.models.convolutional_models import (
+    CausalConvDiscriminator,
+    CausalConvGenerator,
+    CausalConvDiscriminatorMultitask
+)
 import torch.backends.cudnn as cudnn
 from src.data.dataset import TEPDataset
 from src.models.utils import time_series_to_plot
@@ -102,6 +106,10 @@ def main(cuda, debug, run_tag, random_seed):
     in_dim = noise_size + conditioning_size
     fault_type_classifier_weights = "models/2/latest.pth"
     checkpoint_every = 10
+    real_fake_w_d = 1.0  # weight for real fake in loss
+    fault_type_w_d = 0.01  # weight for fault type term in loss
+    real_fake_w_g = 1.0  # weight for real fake in loss
+    similarity_w_g = 0.2  # weight for fault type term in loss
 
     if debug:
         loader_jobs = 1
@@ -147,34 +155,26 @@ def main(cuda, debug, run_tag, random_seed):
     printloader = torch.utils.data.DataLoader(printset, batch_size=trainset.class_count, shuffle=False, num_workers=1,
                                               drop_last=False)
 
-    netD = CausalConvDiscriminator(input_size=trainset.features_count,
-                                   n_layers=8, n_channel=10, kernel_size=8,
-                                   dropout=0).to(device)
+    # netD = CausalConvDiscriminator(input_size=trainset.features_count,
+    #                                n_layers=8, n_channel=200, kernel_size=8,
+    #                                dropout=0).to(device)
     netG = LSTMGenerator(in_dim=in_dim, out_dim=52, hidden_dim=256).to(device)
-    # netG = CausalConvGenerator(noise_size=in_dim, output_size=52, n_layers=8, n_channel=10, kernel_size=8, dropout=0.2).to(device)
+    # netG = CausalConvGenerator(noise_size=in_dim, output_size=52, n_layers=8, n_channel=10, kernel_size=8,
+    #                            dropout=0.2).to(device)
 
-    # for getting a scores on what the predicted class for the generated sequence is
-    net = TEPRNN(
-        class_count=trainset.class_count,
-        lstm_size=lstm_size,
-        seq_size=window_size,
-        features_count=trainset.features_count
-    ).to(device)
-
-    # net.load_state_dict(torch.load(fault_type_classifier_weights))
-    map_loc = f"cuda:{cuda}" if torch.cuda.is_available() else "cpu"
-    # cuda:2 because the model was actually trained on cuda:2 device.
-    net.load_state_dict(torch.load(fault_type_classifier_weights, map_location={'cuda:2': map_loc}))
+    netD = CausalConvDiscriminatorMultitask(input_size=trainset.features_count,
+                                            n_layers=8, n_channel=200, class_count=trainset.class_count,
+                                            kernel_size=8, dropout=0).to(device)
 
     logger.info("Generator:\n" + str(netG))
     logger.info("Discriminator:\n" + str(netD))
-    logger.info("Fault type classifier:\n" + str(net))
 
-    binary_criterion = nn.BCELoss()
+    binary_criterion = nn.BCEWithLogitsLoss()
     cross_entropy_criterion = nn.CrossEntropyLoss()
+    similarity = nn.MSELoss(reduction='sum')
+    # similarity = nn.L1Loss(reduction='sum')
 
-    # optimizerD = optim.SGD(netD.parameters(), lr=0.001, momentum=0.9)
-    # optimizerG = optim.SGD(netG.parameters(), lr=0.001, momentum=0.9)
+
     optimizerD = optim.Adam(netD.parameters(), lr=0.0002)
     optimizerG = optim.Adam(netG.parameters(), lr=0.0002)
 
@@ -184,13 +184,9 @@ def main(cuda, debug, run_tag, random_seed):
         netD.train()
         netG.train()
         # can do this cause we dont use optimizer for this net now
-        net.train()
 
         for i, data in enumerate(trainloader, 0):
             n_iter = epoch * len(trainloader) + i
-
-            if i == 0:
-                real_display = data["shot"].cpu()
 
             real_inputs, fault_labels = data["shot"], data["label"]
             real_inputs, fault_labels = real_inputs.to(device), fault_labels.to(device)
@@ -204,15 +200,20 @@ def main(cuda, debug, run_tag, random_seed):
             batch_size, seq_len = real_inputs.size(0), real_inputs.size(1)
             real_target = torch.full((batch_size, seq_len, 1), REAL_LABEL, device=device)
 
-            output = netD(real_inputs)
-            errD_real = binary_criterion(output, real_target)
-            errD_real.backward()
-            D_x = output.mean().item()
+            type_logits, fake_logits = netD(real_inputs, None)
+            errD_real = binary_criterion(fake_logits, real_target)
+            errD_type_real = cross_entropy_criterion(type_logits, fault_labels)
+            # todo: print at tensorboard errD_real + errD_type
+
+            errD_complex_real = real_fake_w_d * errD_real + fault_type_w_d * errD_type_real
+            errD_complex_real.backward()
+            # here is missed sigmoid function
+            D_x = type_logits.mean().item()
 
             # Fake data training
             noise = torch.randn(batch_size, seq_len, noise_size, device=device)
             random_labels = torch.randint(high=trainset.class_count, size=(batch_size, 1, 1),
-                                          dtype=torch.float32, device=device) / trainset.class_count
+                                          dtype=torch.float32, device=device)
             random_labels = random_labels.repeat(1, seq_len, 1)
             random_labels[:, :20, :] = 0
             noise = torch.cat((noise, random_labels), dim=2)
@@ -222,12 +223,21 @@ def main(cuda, debug, run_tag, random_seed):
 
             fake_inputs = netG(noise, (state_h, state_c))
             fake_target = torch.full((batch_size, seq_len, 1), FAKE_LABEL, device=device)
-            output = netD(fake_inputs.detach())
-            errD_fake = binary_criterion(output, fake_target)
-            errD_fake.backward()
-            D_G_z1 = output.mean().item()
-            errD = errD_real + errD_fake
+            # WARNING: do not forget about detach!
+            type_logits, fake_logits = netD(fake_inputs.detach(), None)
+            errD_fake = binary_criterion(fake_logits, fake_target)
+            errD_type_fake = cross_entropy_criterion(type_logits, random_labels.double().squeeze())
+
+            errD_complex_fake = real_fake_w_d * errD_fake + fault_type_w_d * errD_type_fake
+            errD_complex_fake.backward()
+            # here is missed sigmoid function
+            D_G_z1 = type_logits.mean().item()
+            # all good here (2 lines)
+            errD = real_fake_w_d * errD_real + real_fake_w_d * errD_fake
+            errD_fault_type = fault_type_w_d * errD_type_real + fault_type_w_d * errD_type_fake
+
             optimizerD.step()
+
 
             # Visualize discriminator gradients
             for name, param in netD.named_parameters():
@@ -236,30 +246,23 @@ def main(cuda, debug, run_tag, random_seed):
             # (2) Update G network: maximize log(D(G(z)))
             ###########################
             netG.zero_grad()
-            output = netD(fake_inputs)
-            errG = binary_criterion(output, real_target)
+
+            type_logits, fake_logits = netD(fake_inputs, None)
+            errG = real_fake_w_g * binary_criterion(fake_logits, real_target)
             errG.backward()
-            D_G_z2 = output.mean().item()
+            D_G_z2 = fake_logits.mean().item()
 
-            # Fault Type correction
+            # Visual similarity correction
+            # todo: add KL-divergence term
             noise = torch.randn(batch_size, seq_len, noise_size, device=device)
-            random_labels = torch.randint(high=trainset.class_count, size=(batch_size, 1, 1),
-                                          dtype=torch.float32, device=device) / trainset.class_count
-
-            random_labels = random_labels.repeat(1, seq_len, 1)
-            random_labels[:, :20, :] = 0
-            noise = torch.cat((noise, random_labels), dim=2)
+            noise = torch.cat((noise, fault_labels), dim=2)
 
             state_h, state_c = netG.zero_state(batch_size)
             state_h, state_c = state_h.to(device), state_c.to(device)
             out_seqs = netG(noise, (state_h, state_c))
 
-            classifier_h, classifier_c = net.zero_state(batch_size)
-            classifier_h, classifier_c = classifier_h.to(device), classifier_c.to(device)
-
-            logits, (state_h, state_c) = net(out_seqs, (classifier_h, classifier_c))
-            fault_type_loss = cross_entropy_criterion(logits.transpose(1, 2), fault_labels)
-            fault_type_loss.backward()
+            errG_similarity = similarity_w_g * similarity(out_seqs, real_inputs)
+            errG_similarity.backward()
 
             optimizerG.step()
 
@@ -272,11 +275,12 @@ def main(cuda, debug, run_tag, random_seed):
                 logger.info('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f' %
                             (epoch, epochs, i, len(trainloader), errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
-            writer.add_scalar('FaultTypeCrossEntropyLoss', fault_type_loss.item(), n_iter)
             writer.add_scalar('DiscriminatorLoss', errD.item(), n_iter)
+            writer.add_scalar('DiscriminatorLossFaultType', errD_fault_type.item(), n_iter)
             writer.add_scalar('GeneratorLoss', errG.item(), n_iter)
-            writer.add_scalar('DofX', D_x, n_iter)
-            writer.add_scalar('DofGofz', D_G_z1, n_iter)
+            writer.add_scalar('GeneratorLossSimilarity', errG_similarity.item(), n_iter)
+            writer.add_scalar('DofX_noSigmoid', D_x, n_iter)
+            writer.add_scalar('DofGofz_noSigmoid', D_G_z1, n_iter)
 
             if debug and i > 1:
                 break
@@ -285,7 +289,7 @@ def main(cuda, debug, run_tag, random_seed):
 
         # Saving epoch results.
         # The following images savings cost a lot of memory, reduce the frequency
-        if epoch in [0, 1, 2, 3, 5, 10, 15, 20, 30, 40, 50, epochs - 1]:
+        if epoch in [0, 1, 2, 3, 5, 10, 15, 20, 30, 40, 50, epochs - 1] and not debug:
             netD.eval()
             netG.eval()
             net.eval()
@@ -306,7 +310,7 @@ def main(cuda, debug, run_tag, random_seed):
 
             batch_size, seq_len = real_inputs.size(0), real_inputs.size(1)
             noise = torch.randn(batch_size, seq_len, noise_size, device=device)
-            noise = torch.cat((noise, true_labels.float() / trainset.class_count), dim=2)
+            noise = torch.cat((noise, true_labels.float()), dim=2)
 
             state_h, state_c = netG.zero_state(batch_size)
             state_h, state_c = state_h.to(device), state_c.to(device)
