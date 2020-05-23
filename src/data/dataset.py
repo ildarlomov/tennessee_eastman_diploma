@@ -184,7 +184,10 @@ class TEPDatasetV4(Dataset):
         del self.df
         gc.collect()
 
-        self.permutation = np.random.permutation(self.raw_data.shape[0])
+        permutation = np.random.permutation(self.raw_data.shape[0])
+        if not self.for_print:
+            self.raw_data = self.raw_data[permutation]
+            self.raw_labels = self.raw_labels[permutation]
 
 
     def __len__(self):
@@ -205,8 +208,8 @@ class TEPDatasetV4(Dataset):
             shot_sample = self.raw_data[self.print_ids, ...][idx, ...]
             label_sample = self.raw_labels[self.print_ids, ...][idx, ...]
         else:
-            shot_sample = self.raw_data[self.permutation][idx, ...]
-            label_sample = self.raw_labels[self.permutation][idx, ...]
+            shot_sample = self.raw_data[idx, ...]
+            label_sample = self.raw_labels[idx, ...]
 
         label_sample = np.expand_dims(label_sample, axis=[1])
         sample = {'shot': shot_sample, 'label': label_sample}
@@ -220,8 +223,8 @@ class TEPDatasetV4(Dataset):
         self.print_sim_run = randint(0, self.max_sim_run_number - 1)
         self.print_ids = [ft * self.max_sim_run_number + self.print_sim_run for ft in range(self.class_count)]
 
-    def shuffle(self):
-        self.permutation = np.random.permutation(self.raw_data.shape[0])
+    # def shuffle(self):
+    #     self.permutation = np.random.permutation(self.raw_data.shape[0])
 
 
 class TEPRNNGANDataset(Dataset):

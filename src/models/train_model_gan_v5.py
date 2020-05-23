@@ -93,7 +93,7 @@ def main(cuda, debug, run_tag, random_seed):
     )
 
     lstm_size = 64
-    loader_jobs = 4
+    loader_jobs = 3
     epochs = 50
     window_size = 30
     bs = 128
@@ -163,7 +163,7 @@ def main(cuda, debug, run_tag, random_seed):
     #                            dropout=0.2).to(device)
 
     netD = CausalConvDiscriminatorMultitask(input_size=trainset.features_count,
-                                            n_layers=8, n_channel=200, class_count=trainset.class_count,
+                                            n_layers=8, n_channel=20, class_count=trainset.class_count,
                                             kernel_size=8, dropout=0).to(device)
 
     logger.info("Generator:\n" + str(netG))
@@ -171,8 +171,8 @@ def main(cuda, debug, run_tag, random_seed):
 
     binary_criterion = nn.BCEWithLogitsLoss()
     cross_entropy_criterion = nn.CrossEntropyLoss()
-    similarity = nn.MSELoss(reduction='sum')
-    # similarity = nn.L1Loss(reduction='sum')
+    similarity = nn.MSELoss()
+    similarity = nn.L1Loss()
 
 
     optimizerD = optim.Adam(netD.parameters(), lr=0.0002)
@@ -286,7 +286,7 @@ def main(cuda, debug, run_tag, random_seed):
                 break
 
         logger.info('Epoch %d passed' % epoch)
-        trainset.shuffle()
+        # trainset.shuffle()
 
         # Saving epoch results.
         # The following images savings cost a lot of memory, reduce the frequency
