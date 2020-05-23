@@ -72,8 +72,15 @@ def main(cuda, debug, run_tag, random_seed):
     logger.info(f'Training begin on {device}')
     logger.info(f'Tmp TB dir {temp_model_dir_tensorboard.name}, tmp model dir {temp_model_dir.name}')
 
+    with open(__file__, 'r') as f:
+        with open(os.path.join(temp_model_dir.name, "script.py"), 'w') as out:
+            print("# This file was saved automatically during the experiment run.\n", end='', file=out)
+            for line in f.readlines():
+                print(line, end='', file=out)
+
     if random_seed is None:
         random_seed = random.randint(1, 10000)
+
     logger.info(f"Random Seed: {random_seed}")
     random.seed(random_seed)
     torch.manual_seed(random_seed)
@@ -133,6 +140,7 @@ def main(cuda, debug, run_tag, random_seed):
 
     inverse_transform = InverseNormalize()
 
+    logger.info("Preparing dataset...")
     trainset = TEPDatasetV4(
         tep_file_fault_free=tep_file_fault_free_train,
         tep_file_faulty=tep_file_faulty_train,
@@ -143,6 +151,9 @@ def main(cuda, debug, run_tag, random_seed):
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=bs, shuffle=True, num_workers=loader_jobs,
                                               drop_last=False)
 
+    logger.info("Dataset done.")
+
+    logger.info("Preparing dataset...")
     printset = TEPDatasetV4(
         tep_file_fault_free=tep_file_fault_free_train,
         tep_file_faulty=tep_file_faulty_train,
@@ -155,6 +166,7 @@ def main(cuda, debug, run_tag, random_seed):
     printloader = torch.utils.data.DataLoader(printset, batch_size=trainset.class_count, shuffle=False, num_workers=1,
                                               drop_last=False)
 
+    logger.info("Dataset done.")
     # netD = CausalConvDiscriminator(input_size=trainset.features_count,
     #                                n_layers=8, n_channel=10, kernel_size=8,
     #                                dropout=0).to(device)
@@ -163,7 +175,7 @@ def main(cuda, debug, run_tag, random_seed):
     #                            dropout=0.2).to(device)
 
     netD = CausalConvDiscriminatorMultitask(input_size=trainset.features_count,
-                                            n_layers=8, n_channel=20, class_count=trainset.class_count,
+                                            n_layers=8, n_channel=200, class_count=trainset.class_count,
                                             kernel_size=8, dropout=0).to(device)
 
     logger.info("Generator:\n" + str(netG))
@@ -171,8 +183,8 @@ def main(cuda, debug, run_tag, random_seed):
 
     binary_criterion = nn.BCEWithLogitsLoss()
     cross_entropy_criterion = nn.CrossEntropyLoss()
-    similarity = nn.MSELoss()
-    similarity = nn.L1Loss()
+    similarity = nn.MSELoss(reduction='sum')
+    # similarity = nn.L1Loss()
 
 
     optimizerD = optim.Adam(netD.parameters(), lr=0.0002)
@@ -336,12 +348,6 @@ def main(cuda, debug, run_tag, random_seed):
 
     file_handler.close()
     writer.close()
-
-    with open(__file__, 'r') as f:
-        with open(os.path.join(temp_model_dir.name, "script.py"), 'w') as out:
-            print("# This file was saved automatically during the experiment run.\n", end='', file=out)
-            for line in f.readlines():
-                print(line, end='', file=out)
 
     latest_model_id = get_latest_model_id(dir_name="models") + 1
     os.rename(
