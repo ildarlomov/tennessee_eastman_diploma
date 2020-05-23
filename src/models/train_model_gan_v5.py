@@ -163,7 +163,7 @@ def main(cuda, debug, run_tag, random_seed):
     #                            dropout=0.2).to(device)
 
     netD = CausalConvDiscriminatorMultitask(input_size=trainset.features_count,
-                                            n_layers=8, n_channel=10, class_count=trainset.class_count,
+                                            n_layers=8, n_channel=200, class_count=trainset.class_count,
                                             kernel_size=8, dropout=0).to(device)
 
     logger.info("Generator:\n" + str(netG))
@@ -286,6 +286,7 @@ def main(cuda, debug, run_tag, random_seed):
                 break
 
         logger.info('Epoch %d passed' % epoch)
+        trainset.shuffle()
 
         # Saving epoch results.
         # The following images savings cost a lot of memory, reduce the frequency
