@@ -190,6 +190,7 @@ def main(cuda, debug, run_tag, random_seed):
     optimizerD = optim.Adam(netD.parameters(), lr=0.0002)
     optimizerG = optim.Adam(netG.parameters(), lr=0.0002)
 
+    logger.info("Models done.")
     for epoch in range(epochs):
 
         logger.info('Epoch %d training...' % epoch)
