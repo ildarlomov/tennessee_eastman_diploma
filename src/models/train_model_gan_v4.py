@@ -90,7 +90,7 @@ def main(cuda, debug, run_tag, random_seed):
 
     lstm_size = 64
     loader_jobs = 1
-    epochs = 200
+    epochs = 50
     window_size = 30
     bs = 128
     tep_file_fault_free_train = "data/raw/TEP_FaultFree_Training.RData"
@@ -101,7 +101,7 @@ def main(cuda, debug, run_tag, random_seed):
     conditioning_size = 1
     in_dim = noise_size + conditioning_size
     fault_type_classifier_weights = "models/2/latest.pth"
-    checkpoint_every = 5
+    checkpoint_every = 10
 
     if debug:
         loader_jobs = 1
@@ -150,8 +150,8 @@ def main(cuda, debug, run_tag, random_seed):
     netD = CausalConvDiscriminator(input_size=trainset.features_count,
                                    n_layers=8, n_channel=10, kernel_size=8,
                                    dropout=0).to(device)
-    # netG = LSTMGenerator(in_dim=in_dim, out_dim=52, hidden_dim=256).to(device)
-    netG = CausalConvGenerator(noise_size=in_dim, output_size=52, n_layers=8, n_channel=10, kernel_size=8, dropout=0.2).to(device)
+    netG = LSTMGenerator(in_dim=in_dim, out_dim=52, hidden_dim=256).to(device)
+    # netG = CausalConvGenerator(noise_size=in_dim, output_size=52, n_layers=8, n_channel=10, kernel_size=8, dropout=0.2).to(device)
 
     # for getting a scores on what the predicted class for the generated sequence is
     net = TEPRNN(
@@ -173,8 +173,10 @@ def main(cuda, debug, run_tag, random_seed):
     binary_criterion = nn.BCELoss()
     cross_entropy_criterion = nn.CrossEntropyLoss()
 
-    optimizerD = optim.SGD(netD.parameters(), lr=0.001, momentum=0.9)
-    optimizerG = optim.SGD(netG.parameters(), lr=0.001, momentum=0.9)
+    # optimizerD = optim.SGD(netD.parameters(), lr=0.001, momentum=0.9)
+    # optimizerG = optim.SGD(netG.parameters(), lr=0.001, momentum=0.9)
+    optimizerD = optim.Adam(netD.parameters(), lr=0.0002)
+    optimizerG = optim.Adam(netG.parameters(), lr=0.0002)
 
     for epoch in range(epochs):
 
@@ -316,7 +318,10 @@ def main(cuda, debug, run_tag, random_seed):
         im = Image.fromarray(ndarr, mode="RGB")
         im.save(fp_fake, format=None)
 
-        writer.add_image("FakeTEP", fake_plot, epoch)
+        # this images cost a lot of memory, reduce the frequency
+        if epoch in [1, 2, 3, 4, 5, 10, 15, 20, 30, 40, 50, epochs - 1]:
+            writer.add_image("RealTEP", real_plot, epoch)
+            writer.add_image("FakeTEP", fake_plot, epoch)
 
         if (epoch % checkpoint_every == 0) or (epoch == (epochs - 1)):
             torch.save(netG, os.path.join(temp_model_dir.name, "weights", f"{epoch}_epoch_generator.pth"))
