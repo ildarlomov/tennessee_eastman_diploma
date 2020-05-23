@@ -4,7 +4,7 @@ import torch
 import torchvision.utils as vutils
 import os
 
-def time_series_to_plot(time_series_batch, dpi=35, feature_idx=0, n_images_per_row=4, titles=None):
+def time_series_to_plot(time_series_batch, dpi=35, titles=None):
     """Convert a batch of time series to a tensor with a grid of their plots
     
     Args:
@@ -17,25 +17,31 @@ def time_series_to_plot(time_series_batch, dpi=35, feature_idx=0, n_images_per_r
     Output:
         single (channels, width, height)-shaped tensor representing an image
     """
-    #Iterates over the time series
-    images = []
+    # Iterates over the time series
+    fault_type_images = []
+    # HINT: pi = 60 is good, size of 16, 3 is also good
+    # iteration by fault types:
     for i, series in enumerate(time_series_batch.detach()):
-        fig = plt.figure(dpi=dpi)
-        ax = fig.add_subplot(1,1,1)
-        if titles:
-            ax.set_title(titles[i])
-        ax.plot(series[:, feature_idx].numpy()) #plots a single feature of the time series
-        fig.canvas.draw()
-        data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
-        data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-        images.append(data)
-        plt.close(fig)
+        time_series_images = []
+        for j in range(series.size(1)):
 
-    #Swap channel
-    images = torch.from_numpy(np.stack(images)).permute(0, 3, 1, 2)
-    #Make grid
-    grid_image = vutils.make_grid(images.detach(), nrow=n_images_per_row)
-    return grid_image
+            fig = plt.figure(dpi=dpi, figsize=(16, 3))
+            ax = fig.add_subplot(1, 1, 1)
+            if titles:
+                ax.set_title(titles[i])
+            ax.plot(series[:, j].numpy())  # plots a single feature of the time series
+            fig.canvas.draw()
+            data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+            data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            time_series_images.append(data)
+            plt.close(fig)
+        fault_type_images.append(time_series_images)
+
+    # Swap channel
+    fault_type_images = [torch.from_numpy(np.stack(fti)).permute(0, 3, 1, 2) for fti in fault_type_images]
+    # Make grid
+    grids_image_list = [vutils.make_grid(fti.detach(), nrow=1) for fti in fault_type_images]
+    return grids_image_list
 
 def tensor_to_string_list(tensor):
     """Convert a tensor to a list of strings representing its value"""

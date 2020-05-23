@@ -278,50 +278,49 @@ def main(cuda, debug, run_tag, random_seed):
             writer.add_scalar('DofX', D_x, n_iter)
             writer.add_scalar('DofGofz', D_G_z1, n_iter)
 
-            if debug and i > 10:
+            if debug and i > 1:
                 break
 
         logger.info('Epoch %d passed' % epoch)
 
         # Saving epoch results.
-        netD.eval()
-        netG.eval()
-        net.eval()
+        # The following images savings cost a lot of memory, reduce the frequency
+        if epoch in [0, 1, 2, 3, 5, 10, 15, 20, 30, 40, 50, epochs - 1]:
+            netD.eval()
+            netG.eval()
+            net.eval()
 
-        real_display = next(iter(printloader))
-        real_inputs, true_labels = real_display["shot"], real_display["label"]
-        real_inputs, true_labels = real_inputs.to(device), true_labels.to(device)
+            real_display = next(iter(printloader))
+            real_inputs, true_labels = real_display["shot"], real_display["label"]
+            real_inputs, true_labels = real_inputs.to(device), true_labels.to(device)
 
-        real_display = inverse_transform(real_display)
+            real_display = inverse_transform(real_display)
 
-        real_plot = time_series_to_plot(real_display["shot"].cpu())
-        fp_real = os.path.join(temp_model_dir.name, "images", f"{epoch}_epoch_real.jpg")
-        ndarr = real_plot.to('cpu', torch.uint8).permute(1, 2, 0).numpy()
-        im = Image.fromarray(ndarr, mode="RGB")
-        im.save(fp_real, format=None)
+            real_plots = time_series_to_plot(real_display["shot"].cpu())
+            for idx, rp in enumerate(real_plots):
+                fp_real = os.path.join(temp_model_dir.name, "images", f"{epoch}_epoch_real_{idx}.jpg")
+                ndarr = rp.to('cpu', torch.uint8).permute(1, 2, 0).numpy()
+                im = Image.fromarray(ndarr, mode="RGB")
+                im.save(fp_real, format=None)
+                writer.add_image(f"RealTEP_{idx}", rp, epoch)
 
-        writer.add_image("RealTEP", real_plot, epoch)
+            batch_size, seq_len = real_inputs.size(0), real_inputs.size(1)
+            noise = torch.randn(batch_size, seq_len, noise_size, device=device)
+            noise = torch.cat((noise, true_labels.float() / trainset.class_count), dim=2)
 
-        batch_size, seq_len = real_inputs.size(0), real_inputs.size(1)
-        noise = torch.randn(batch_size, seq_len, noise_size, device=device)
-        noise = torch.cat((noise, true_labels.float() / trainset.class_count), dim=2)
+            state_h, state_c = netG.zero_state(batch_size)
+            state_h, state_c = state_h.to(device), state_c.to(device)
+            fake_display = netG(noise, (state_h, state_c))
+            fake_display = {"shot": fake_display.cpu(), "label": true_labels}
+            fake_display = inverse_transform(fake_display)
 
-        state_h, state_c = netG.zero_state(batch_size)
-        state_h, state_c = state_h.to(device), state_c.to(device)
-        fake_display = netG(noise, (state_h, state_c))
-        fake_display = {"shot": fake_display.cpu(), "label": true_labels}
-        fake_display = inverse_transform(fake_display)
-        fake_plot = time_series_to_plot(fake_display["shot"])
-        fp_fake = os.path.join(temp_model_dir.name, "images", f"{epoch}_epoch_fake.jpg")
-
-        ndarr = fake_plot.to('cpu', torch.uint8).permute(1, 2, 0).numpy()
-        im = Image.fromarray(ndarr, mode="RGB")
-        im.save(fp_fake, format=None)
-
-        # this images cost a lot of memory, reduce the frequency
-        if epoch in [1, 2, 3, 4, 5, 10, 15, 20, 30, 40, 50, epochs - 1]:
-            writer.add_image("RealTEP", real_plot, epoch)
-            writer.add_image("FakeTEP", fake_plot, epoch)
+            fake_plots = time_series_to_plot(fake_display["shot"])
+            for idx, fp in enumerate(fake_plots):
+                fp_fake = os.path.join(temp_model_dir.name, "images", f"{epoch}_epoch_fake_{idx}.jpg")
+                ndarr = fp.to('cpu', torch.uint8).permute(1, 2, 0).numpy()
+                im = Image.fromarray(ndarr, mode="RGB")
+                im.save(fp_fake, format=None)
+                writer.add_image(f"FakeTEP_{idx}", fp, epoch)
 
         if (epoch % checkpoint_every == 0) or (epoch == (epochs - 1)):
             torch.save(netG, os.path.join(temp_model_dir.name, "weights", f"{epoch}_epoch_generator.pth"))
