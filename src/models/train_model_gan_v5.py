@@ -121,7 +121,8 @@ def main(cuda, debug, run_tag, random_seed):
     similarity_w_g = 1.0  # weight for fault type term in loss
 
     if debug:
-        loader_jobs = 1
+        # WARNING: newer put 1 here for local debugging. This will destroy the PyCharm dev console.
+        loader_jobs = 0
         bs = 2
         epochs = 4
         tep_file_fault_free_train = "data/raw/sampled_TEP/sampled_train.pkl"
