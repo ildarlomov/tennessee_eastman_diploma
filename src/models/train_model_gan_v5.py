@@ -278,7 +278,7 @@ def main(cuda, debug, run_tag, random_seed):
             g_coin = random.random() < generator_train_prob
             errG = torch.zeros(1)
             D_G_z2 = torch.zeros(1).item()
-            errG_similarity = torch.zeros()
+            errG_similarity = torch.zeros(1)
 
             if g_coin:
                 netG.zero_grad()
