@@ -179,4 +179,4 @@ prun_train_gan_v3:
 #git pull && pipenv run pip install . && pipenv run python src/models/train_model_gan_v4.py --cuda 2 -d --run_tag debug_run
 #git pull && pipenv run pip install . && pipenv run python src/models/train_model_gan_v4.py --cuda 2 --run_tag lstm_generator
 #git pull && pipenv run pip install . && pipenv run python src/models/train_model_gan_v4.py --cuda 4 --run_tag casual_conv_generator
-#git pull && pipenv run pip install . && pipenv run python src/models/train_model_gan_v5.py --cuda 6 --run_tag no_smooth_mse_mean_lstm_g_cnn_d
+#git pull && pipenv run pip install . && pipenv run python src/models/train_model_gan_v5.py --cuda 6 --run_tag cnn1d2d_4_l_lstrm_gen_mean_sim
