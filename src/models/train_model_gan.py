@@ -17,6 +17,8 @@ from PIL import Image
 from typing import Iterable
 import pyreadr as py
 from argparse import Namespace
+from src.models.convolutional_models import CausalConvDiscriminatorMultitask
+from src.models.utils import get_latest_model_id
 
 """This is a working LSTM model script."""
 
@@ -54,16 +56,6 @@ TEP_STD = torch.from_numpy(np.array(
      2.35821751e+00, 1.71937564e+01, 9.77333948e+00, 5.06438809e+00]
 )).float()
 
-
-def get_latest_model_id(dir_name):
-    model_ids = list()
-    for d in os.listdir(dir_name):
-        if os.path.isdir(os.path.join(dir_name, d)):
-            try:
-                model_ids.append(int(d))
-            except ValueError:
-                pass
-    return max(model_ids) if len(model_ids) else 0
 
 
 class TEPRNNGANDataset(Dataset):
@@ -197,7 +189,8 @@ class Normalize(object):
 @click.command()
 @click.option('--cuda', required=True, type=int, default=7)
 @click.option('-d', '--debug', 'debug', is_flag=True)
-def main(cuda, debug):
+@click.option('--run_tag', required=True, type=str, default="unknown")
+def main(cuda, debug, run_tag):
     """
     План такой:
     Сначала мы просто делаем lstm и учимся с каждого шага по батчу
@@ -208,7 +201,9 @@ def main(cuda, debug):
     """
     logFormatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     logging.basicConfig(level=logging.INFO)
-    temp_model_dir = TemporaryDirectory(dir="models")
+    latest_model_id = get_latest_model_id(dir_name="models") + 1
+    prefix = f'{latest_model_id}_{run_tag}_tmp_'
+    temp_model_dir = TemporaryDirectory(dir="models", prefix=prefix)
     temp_model_dir.cleanup()
     Path(temp_model_dir.name).mkdir(parents=True, exist_ok=False)
     tempLogFile = os.path.join(temp_model_dir.name, 'log.txt')
@@ -281,12 +276,16 @@ def main(cuda, debug):
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=loader_jobs,
                                              drop_last=False)
 
-    net = TEPRNN(
-        class_count=trainset.class_count,
-        lstm_size=lstm_size,
-        seq_size=window_size,
-        features_count=trainset.features_count
-    ).to(device)
+    # net = TEPRNN(
+    #     class_count=trainset.class_count,
+    #     lstm_size=lstm_size,
+    #     seq_size=window_size,
+    #     features_count=trainset.features_count
+    # ).to(device)
+
+    net = CausalConvDiscriminatorMultitask(input_size=52,
+                                           n_layers=8, n_channel=150, class_count=trainset.class_count,
+                                           kernel_size=9, dropout=0.2).to(device)
     logger.info("\n" + str(net))
 
     criterion = nn.CrossEntropyLoss()
@@ -310,6 +309,7 @@ def main(cuda, debug):
 
             optimizer.zero_grad()
             logits, (state_h, state_c) = net(inputs, (state_h, state_c))
+            logits, _ = net(inputs, (state_h, state_c))
             loss = criterion(logits.transpose(1, 2), labels)
             loss.backward()
             optimizer.step()
@@ -322,7 +322,7 @@ def main(cuda, debug):
                 running_loss = 0.0
                 loss_size = 0
 
-            if debug and i > 100:
+            if debug and i > 10:
                 break
 
         logger.info('Epoch %d evaluation...' % epoch)
@@ -340,7 +340,8 @@ def main(cuda, debug):
                 inputs = inputs.squeeze(dim=1)
                 labels = labels.squeeze()
                 # logits[:, -1, :] this is due to we account only the latest output from LSTM dense layer.
-                logits, (state_h, state_c) = net(inputs, (state_h, state_c))
+                # logits, (state_h, state_c) = net(inputs, (state_h, state_c))
+                logits, _ = net(inputs, (state_h, state_c))
                 _, predicted = torch.max(logits[:, -1, :].data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels[:, -1]).sum().item()
@@ -365,7 +366,7 @@ def main(cuda, debug):
 
     os.rename(
         os.path.join(temp_model_dir.name),
-        os.path.join("models", str(get_latest_model_id(dir_name="models") + 1))
+        os.path.join("models", f'{latest_model_id}_{run_tag}')
     )
 
 

@@ -11,9 +11,11 @@ from torchvision.transforms.functional import to_tensor, resize
 import torch.optim as optim
 import logging
 from tempfile import NamedTemporaryFile, TemporaryDirectory
+from src.models.convolutional_models import CausalConvDiscriminatorMultitask
 from pathlib import Path
 import sys
 import pyreadr as py
+from src.models.utils import get_latest_model_id
 
 RANDOM_SEED = 42
 
@@ -48,17 +50,6 @@ TEP_STD = torch.from_numpy(np.array(
      7.23875632e+00, 1.08172496e+01, 1.26262137e+01, 2.94991280e+00,
      2.35821751e+00, 1.71937564e+01, 9.77333948e+00, 5.06438809e+00]
 )).float()
-
-
-def get_latest_model_id(dir_name):
-    model_ids = list()
-    for d in os.listdir(dir_name):
-        if os.path.isdir(os.path.join(dir_name, d)):
-            try:
-                model_ids.append(int(d))
-            except ValueError:
-                pass
-    return max(model_ids) if len(model_ids) else 0
 
 
 class TEPCNNDataset(Dataset):
@@ -202,10 +193,13 @@ class Normalize(object):
 @click.command()
 @click.option('--cuda', required=True, type=int, default=7)
 @click.option('-d', '--debug', 'debug', is_flag=True)
-def main(cuda, debug):
+@click.option('--run_tag', required=True, type=str, default="unknown")
+def main(cuda, debug, run_tag):
     logFormatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     logging.basicConfig(level=logging.INFO)
-    temp_model_dir = TemporaryDirectory(dir="models")
+    latest_model_id = get_latest_model_id(dir_name="models") + 1
+    prefix = f'{latest_model_id}_{run_tag}_tmp_'
+    temp_model_dir = TemporaryDirectory(dir="models", prefix=prefix)
     temp_model_dir.cleanup()
     Path(temp_model_dir.name).mkdir(parents=True, exist_ok=False)
     tempLogFile = os.path.join(temp_model_dir.name, 'log.txt')
@@ -221,7 +215,7 @@ def main(cuda, debug):
     device = torch.device(f"cuda:{cuda}" if torch.cuda.is_available() else "cpu")
     logger.info(f'Training begin on {device}')
     loader_jobs = 8
-    epochs = 20
+    epochs = 30
     window_size = 30
     batch_size = 64
     tep_file_fault_free_train = "data/raw/TEP_FaultFree_Training.RData"
@@ -262,7 +256,11 @@ def main(cuda, debug):
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=loader_jobs,
                                              drop_last=False)
 
-    net = CNN1D2D(class_count=trainset.class_count).to(device)
+    # net = CNN1D2D(class_count=trainset.class_count).to(device)
+
+    net = CausalConvDiscriminatorMultitask(input_size=52,
+                                           n_layers=8, n_channel=150, class_count=trainset.class_count,
+                                           kernel_size=9, dropout=0.2).to(device)
     logger.info("\n" + str(net))
 
     criterion = nn.CrossEntropyLoss()
@@ -279,8 +277,8 @@ def main(cuda, debug):
             inputs, labels = data["shot"], data["label"]
             inputs, labels = inputs.to(device), labels.to(device)
             optimizer.zero_grad()
-            outputs = net(inputs)
-            loss = criterion(outputs, torch.squeeze(labels))
+            type_logits, _ = net(inputs.squeeze(), None)
+            loss = criterion(type_logits.transpose(1,2), torch.squeeze(labels))
             loss.backward()
             optimizer.step()
 
@@ -302,8 +300,8 @@ def main(cuda, debug):
                 inputs, labels = data["shot"], data["label"]
                 inputs, labels = inputs.to(device), labels.to(device)
                 labels = torch.squeeze(labels)
-                outputs = net(inputs)
-                _, predicted = torch.max(outputs.data, 1)
+                type_logits, _ = net(inputs.squeeze(), None)
+                _, predicted = torch.max(type_logits.data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
                 if debug:
