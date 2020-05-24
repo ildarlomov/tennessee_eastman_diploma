@@ -302,18 +302,17 @@ def main(cuda, debug, run_tag, random_seed):
 
                 optimizerG.step()
 
-                # Visualize generator gradients
-                for name, param in netG.named_parameters():
-                    writer.add_histogram("GeneratorGradients/{}".format(name), param.grad, n_iter)
+            # Visualize generator gradients
+            for name, param in netG.named_parameters():
+                writer.add_histogram("GeneratorGradients/{}".format(name), param.grad, n_iter)
 
             log_flag = True if debug else (i + 1) % 20 == 0
             if log_flag:
                 logger.info('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f' %
                             (epoch, epochs, i, len(trainloader), errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
-            if g_coin:
-                writer.add_scalar('GeneratorLoss', errG.item(), n_iter)
-                writer.add_scalar('GeneratorLossSimilarity', errG_similarity.item(), n_iter)
+            writer.add_scalar('GeneratorLoss', errG.item(), n_iter)
+            writer.add_scalar('GeneratorLossSimilarity', errG_similarity.item(), n_iter)
 
             writer.add_scalar('DiscriminatorLoss', errD.item(), n_iter)
             writer.add_scalar('DiscriminatorLossFaultType', errD_fault_type.item(), n_iter)
