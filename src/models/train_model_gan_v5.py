@@ -18,7 +18,8 @@ from src.models.recurrent_models import TEPRNN, LSTMGenerator
 from src.models.convolutional_models import (
     CausalConvDiscriminator,
     CausalConvGenerator,
-    CausalConvDiscriminatorMultitask
+    CausalConvDiscriminatorMultitask,
+    CNN1D2DDiscriminatorMultitask
 )
 import torch.backends.cudnn as cudnn
 from src.data.dataset import TEPDataset
@@ -103,7 +104,6 @@ def main(cuda, debug, run_tag, random_seed):
 
     lstm_size = 64
     loader_jobs = 2
-    epochs = 50
     window_size = 30
     bs = 128
     tep_file_fault_free_train = "data/raw/TEP_FaultFree_Training.RData"
@@ -119,6 +119,10 @@ def main(cuda, debug, run_tag, random_seed):
     fault_type_w_d = 0.8  # weight for fault type term in loss
     real_fake_w_g = 1.0  # weight for real fake in loss
     similarity_w_g = 1.0  # weight for fault type term in loss
+    generator_train_prob = 0.8  # how frequently ignore the generator step. Note that the amount of total steps will be
+    # equal to epochs * 83 batches * generator_train_prob, which is (1 - generator_train_prob) % less that for
+    # discriminator
+    epochs = 200
 
     if debug:
         # WARNING: newer put 1 here for local debugging. This will destroy the PyCharm dev console.
@@ -130,6 +134,7 @@ def main(cuda, debug, run_tag, random_seed):
         tep_file_fault_free_test = "data/raw/sampled_TEP/sampled_test.pkl"
         tep_file_faulty_test = "data/raw/sampled_TEP/sampled_test.pkl"
         checkpoint_every = 1
+        generator_train_every = 1
 
     # Create writer for tensorboard
     writer = SummaryWriter(temp_model_dir_tensorboard.name)
@@ -179,9 +184,14 @@ def main(cuda, debug, run_tag, random_seed):
 
     # nn.ConvTranspose2d()
 
-    netD = CausalConvDiscriminatorMultitask(input_size=trainset.features_count,
-                                            n_layers=8, n_channel=150, class_count=trainset.class_count,
-                                            kernel_size=9, dropout=0.2).to(device)
+    # netD = CausalConvDiscriminatorMultitask(input_size=trainset.features_count,
+    #                                         n_layers=8, n_channel=150, class_count=trainset.class_count,
+    #                                         kernel_size=9, dropout=0.2).to(device)
+
+    netD = CNN1D2DDiscriminatorMultitask(input_size=trainset.features_count, n_layers_1d=4, n_layers_2d=4,
+                                         n_channel=trainset.features_count * 3, n_channel_2d=40,
+                                         class_count=trainset.class_count,
+                                         kernel_size=9, dropout=0.2, groups=trainset.features_count).to(device)
 
     logger.info("Generator:\n" + str(netG))
     logger.info("Discriminator:\n" + str(netD))
@@ -190,7 +200,6 @@ def main(cuda, debug, run_tag, random_seed):
     cross_entropy_criterion = nn.CrossEntropyLoss()
     similarity = nn.MSELoss(reduction='mean')
     # similarity = nn.L1Loss(reduction='sum')
-
 
     optimizerD = optim.Adam(netD.parameters(), lr=0.0002)
     optimizerG = optim.Adam(netG.parameters(), lr=0.0002)
@@ -219,7 +228,6 @@ def main(cuda, debug, run_tag, random_seed):
             real_target = torch.full((batch_size, seq_len, 1), REAL_LABEL, device=device)
             # for  label smoothing on [0.74, 1.0]
             # real_target = (0.74 - 1.0) - torch.rand(batch_size, seq_len, 1, device=device) + 1.0
-
 
             type_logits, fake_logits = netD(real_inputs, None)
             errD_real = binary_criterion(fake_logits, real_target)
@@ -261,37 +269,42 @@ def main(cuda, debug, run_tag, random_seed):
 
             optimizerD.step()
 
-
             # Visualize discriminator gradients
             for name, param in netD.named_parameters():
                 writer.add_histogram("DiscriminatorGradients/{}".format(name), param.grad, n_iter)
 
             # (2) Update G network: maximize log(D(G(z)))
             ###########################
-            netG.zero_grad()
+            g_coin = random.random() < generator_train_prob
+            errG = torch.zeros(1)
+            D_G_z2 = torch.zeros(1).item()
+            errG_similarity = torch.zeros()
 
-            type_logits, fake_logits = netD(fake_inputs, None)
-            errG = real_fake_w_g * binary_criterion(fake_logits, real_target)
-            errG.backward()
-            D_G_z2 = fake_logits.mean().item()
+            if g_coin:
+                netG.zero_grad()
 
-            # Visual similarity correction
-            # todo: add KL-divergence term
-            noise = torch.randn(batch_size, seq_len, noise_size, device=device)
-            noise = torch.cat((noise, fault_labels.float().unsqueeze(2)), dim=2)
+                type_logits, fake_logits = netD(fake_inputs, None)
+                errG = real_fake_w_g * binary_criterion(fake_logits, real_target)
+                errG.backward()
+                D_G_z2 = fake_logits.mean().item()
 
-            state_h, state_c = netG.zero_state(batch_size)
-            state_h, state_c = state_h.to(device), state_c.to(device)
-            out_seqs = netG(noise, (state_h, state_c))
+                # Visual similarity correction
+                # todo: add KL-divergence term
+                noise = torch.randn(batch_size, seq_len, noise_size, device=device)
+                noise = torch.cat((noise, fault_labels.float().unsqueeze(2)), dim=2)
 
-            errG_similarity = similarity_w_g * similarity(out_seqs, real_inputs)
-            errG_similarity.backward()
+                state_h, state_c = netG.zero_state(batch_size)
+                state_h, state_c = state_h.to(device), state_c.to(device)
+                out_seqs = netG(noise, (state_h, state_c))
 
-            optimizerG.step()
+                errG_similarity = similarity_w_g * similarity(out_seqs, real_inputs)
+                errG_similarity.backward()
 
-            # Visualize generator gradients
-            for name, param in netG.named_parameters():
-                writer.add_histogram("GeneratorGradients/{}".format(name), param.grad, n_iter)
+                optimizerG.step()
+
+                # Visualize generator gradients
+                for name, param in netG.named_parameters():
+                    writer.add_histogram("GeneratorGradients/{}".format(name), param.grad, n_iter)
 
             log_flag = True if debug else (i + 1) % 20 == 0
             if log_flag:
@@ -313,7 +326,7 @@ def main(cuda, debug, run_tag, random_seed):
 
         # Saving epoch results.
         # The following images savings cost a lot of memory, reduce the frequency
-        if epoch in [0, 1, 2, 3, 5, 10, 15, 20, 30, 40, 50, epochs - 1] and not debug:
+        if epoch in [0, 1, 2, 3, 5, 10, 15, 20, 30, 40, 50, *list(range(60, epochs, 30)), epochs - 1] and not debug:
             netD.eval()
             netG.eval()
 
