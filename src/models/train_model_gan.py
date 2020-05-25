@@ -233,7 +233,7 @@ def main(cuda, debug, run_tag):
     )
 
     lstm_size = 64
-    loader_jobs = 8
+    loader_jobs = 2
     epochs = 20
     window_size = 30
     batch_size = 64
@@ -308,7 +308,7 @@ def main(cuda, debug, run_tag):
             labels = labels.squeeze()
 
             optimizer.zero_grad()
-            logits, (state_h, state_c) = net(inputs, (state_h, state_c))
+            # logits, (state_h, state_c) = net(inputs, (state_h, state_c))
             logits, _ = net(inputs, (state_h, state_c))
             loss = criterion(logits.transpose(1, 2), labels)
             loss.backward()
